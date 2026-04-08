@@ -80,3 +80,4 @@ data/
 *.wav
 *.ogg
 *.flac
+.worktrees/
