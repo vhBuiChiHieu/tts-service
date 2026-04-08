@@ -23,14 +23,15 @@ Các module chính:
 - `tests/`: test cho health/api/repo/chunker/google adapter/processor/recovery.
 
 ## 3. Luồng xử lý end-to-end
-1. Client gọi `POST /v1/jobs` với `text`, `lang`, `voice_hint`, `metadata`.
-2. API tạo bản ghi job trạng thái `QUEUED` trong SQLite.
+1. Client gọi `POST /v1/jobs` với `text`, `lang`, `voice_hint`, `metadata`, `speed`, `volume_gain_db`.
+2. API validate `speed` (0.5-2.0) và `volume_gain_db` (-20.0 đến 20.0), tạo bản ghi job `QUEUED` trong SQLite.
 3. Worker polling định kỳ lấy job `QUEUED` đầu tiên (FIFO), chuyển `RUNNING`.
-4. Processor tách text thành chunks (có offset), gọi provider TTS cho từng chunk.
+4. Processor tách text thành chunks (có offset), gọi provider TTS cho từng chunk với `speed` theo job.
 5. Sau mỗi chunk, cập nhật progress (`processed_chunks`, `progress_pct`, vị trí char).
-6. Ghép audio và export ra `outputs/<job_id>.mp3`.
-7. Thành công: `SUCCEEDED` + thông tin file/duration.
-8. Thất bại: `FAILED` + `error_code`/`error_message`.
+6. Merger áp `volume_gain_db` lên từng chunk audio trước khi ghép và export `outputs/<job_id>.mp3`.
+7. Google adapter thử payload speed custom trước; nếu parse lỗi thì fallback 1 lần với `speed=1.0`.
+8. Thành công: `SUCCEEDED` + thông tin file/duration.
+9. Thất bại: `FAILED` + `error_code`/`error_message`.
 
 ## 4. Dữ liệu job tracking
 Thông tin tracking gồm:
@@ -59,9 +60,12 @@ Giá trị mặc định hiện tại (chạy từ repo root):
 ## 6. Trạng thái hiện tại
 - API tạo job và tracking hoạt động.
 - Worker xử lý bất đồng bộ hoạt động.
+- Đã hỗ trợ per-job `speed` + `volume_gain_db`, có validate input ở API.
+- DB đã persist `speed` và `volume_gain_db` theo từng job.
+- Google adapter có fallback an toàn về `speed=1.0` nếu response speed custom parse lỗi.
 - Đã fix parser token cho trường hợp Google không trả key `SNlM0e`.
 - End-to-end đã tạo thành công file MP3 (khi có ffmpeg/ffprobe).
-- Test suite hiện có: 14 tests, đang pass.
+- Test suite hiện có: 20 tests, đang pass.
 
 ## 7. Giới hạn hiện tại
 - Phụ thuộc vào endpoint nội bộ Google Translate (có thể thay đổi format bất kỳ lúc nào).

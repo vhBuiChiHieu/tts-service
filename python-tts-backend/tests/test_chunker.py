@@ -18,3 +18,24 @@ def test_build_chunks_empty_text_raises():
         assert str(exc) == "text is empty"
     else:
         assert False, "expected ValueError"
+
+
+def test_build_chunks_overflow_prefers_whitespace_not_midword_split():
+    text = "abcde fghij"
+    chunks = build_chunks(text=text, max_chars=7)
+
+    assert chunks[0]["text"] == "abcde"
+    assert chunks[1]["text"] == "fghij"
+
+
+def test_build_chunks_overflow_prefers_punctuation_boundary():
+    text = "xin chao, ban oi toi day"
+    chunks = build_chunks(text=text, max_chars=12)
+
+    assert chunks[0]["text"].endswith(",")
+    assert chunks[0]["text"] == "xin chao,"
+    assert chunks[1]["text"].startswith("ban")
+
+    for chunk in chunks:
+        assert len(chunk["text"]) <= 12
+        assert chunk["text"]

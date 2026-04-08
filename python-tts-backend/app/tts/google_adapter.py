@@ -8,10 +8,13 @@ def parse_batchexecute_audio_base64(body: str) -> str:
     for line in body.splitlines():
         line = line.strip()
         if line.startswith("[[") and "jQ1olc" in line:
-            outer = json.loads(line)
-            payload = outer[0][2]
-            inner = json.loads(payload)
-            return inner[0]
+            try:
+                outer = json.loads(line)
+                payload = outer[0][2]
+                inner = json.loads(payload)
+                return inner[0]
+            except (TypeError, json.JSONDecodeError, IndexError):
+                break
     raise ValueError("cannot parse batchexecute response")
 
 

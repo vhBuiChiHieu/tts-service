@@ -4,9 +4,10 @@ Backend TTS local bằng FastAPI + SQLite + worker thread, tạo MP3 từ text q
 
 ## Features
 - Tạo job TTS qua API.
+- Hỗ trợ per-job `speed` và `volume_gain_db` với default an toàn.
 - Theo dõi tiến độ xử lý job theo thời gian thực.
 - Xử lý chunk + retry + random delay.
-- Ghép audio và xuất ra file MP3.
+- Ghép audio, áp gain volume, và xuất ra file MP3.
 - Recover job `RUNNING` về `QUEUED` khi restart.
 
 ## Project structure
@@ -64,12 +65,46 @@ PORT=8000
 ```
 
 ## Run server
+### macOS/Linux (bash)
+Từ repo root:
 ```bash
 PYTHONPATH="python-tts-backend" \
 DB_PATH="python-tts-backend/data/jobs.db" \
 OUTPUT_DIR="python-tts-backend/outputs" \
 uvicorn "app.main:app" --host 127.0.0.1 --port 8000
 ```
+
+### Windows (PowerShell)
+**Cách 1: chạy từ repo root (`tts-service`)**
+```powershell
+$env:PYTHONPATH = "python-tts-backend"
+$env:DB_PATH = "python-tts-backend/data/jobs.db"
+$env:OUTPUT_DIR = "python-tts-backend/outputs"
+uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+**Cách 2: chạy trong thư mục `python-tts-backend`**
+```powershell
+$env:PYTHONPATH = "."
+$env:DB_PATH = "./data/jobs.db"
+$env:OUTPUT_DIR = "./outputs"
+uvicorn app.main:app --host 127.0.0.1 --port 8000
+```
+
+Lưu ý: PowerShell không dùng cú pháp `VAR=value command` như bash.
+```powershell
+# Sai trong PowerShell
+PYTHONPATH="python-tts-backend" uvicorn app.main:app
+```
+Dùng `$env:...` như ví dụ ở trên.
+
+Nếu vừa cài ffmpeg bằng winget, mở PowerShell mới rồi kiểm tra:
+```powershell
+Get-Command ffmpeg
+Get-Command ffprobe
+```
+Nếu chưa thấy, thêm thư mục `ffmpeg\bin` vào PATH và mở terminal lại.
+
 
 ## API usage
 ### 1) Health check
@@ -85,9 +120,19 @@ curl -s -X POST "http://127.0.0.1:8000/v1/jobs" \
     "text":"Xin chao. Day la ban test.",
     "lang":"vi",
     "voice_hint":null,
-    "metadata":{"source":"demo"}
+    "metadata":{"source":"demo"},
+    "speed": 1.2,
+    "volume_gain_db": 3.0
   }'
 ```
+
+Ràng buộc request:
+- `speed`: `0.5 -> 2.0` (default `1.0`)
+- `volume_gain_db`: `-20.0 -> 20.0` (default `0.0`)
+
+Lưu ý:
+- `speed != 1.0` sẽ gửi payload speed tới Google adapter.
+- Nếu provider không parse được response với speed custom, hệ thống fallback 1 lần về `speed=1.0`.
 
 Response mẫu:
 ```json
@@ -125,6 +170,7 @@ pytest python-tts-backend/tests -v
 
 ### 3) Job fail với `PROVIDER_RESPONSE_INVALID`
 - Google response thay đổi hoặc token parse lỗi tạm thời.
+- Với `speed` custom, hệ thống đã thử fallback về `speed=1.0` một lần.
 - Thử lại job; kiểm tra kết nối mạng.
 
 ### 4) Không thấy file output

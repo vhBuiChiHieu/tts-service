@@ -52,11 +52,33 @@ def build_chunks(text: str, max_chars: int) -> list[dict]:
         cursor += sentence_len + 1
 
         while len(current) > max_chars:
-            overflow = current[max_chars:]
-            current = current[:max_chars].rstrip()
+            split_at = max_chars
+            window = current[: max_chars + 1]
+            punct_at = max(window.rfind("."), window.rfind("!"), window.rfind("?"), window.rfind(";"), window.rfind(","), window.rfind(":"))
+            space_at = window.rfind(" ")
+
+            if punct_at > 0:
+                split_at = punct_at + 1
+            elif space_at > 0:
+                split_at = space_at
+
+            head_raw = current[:split_at]
+            tail_raw = current[split_at:]
+            head = head_raw.rstrip()
+            consumed = len(head_raw)
+
+            if not head:
+                head = current[:max_chars].rstrip()
+                consumed = max_chars
+                tail_raw = current[consumed:]
+
+            current = head
             flush_chunk()
-            current = overflow.lstrip()
-            current_start += max_chars
+
+            next_current = tail_raw.lstrip()
+            stripped = len(tail_raw) - len(next_current)
+            current = next_current
+            current_start += consumed + stripped
 
     flush_chunk()
     return chunks
