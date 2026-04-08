@@ -23,7 +23,7 @@ def process_job(job_id, repo, chunker, adapter, merger, output_path, max_chars):
                         chunk["text"],
                         job.lang,
                         reqid=10000 + idx,
-                        speed=job.speed,
+                        speed=1.0,
                     )
                     merger.append_base64_mp3(b64)
                     break

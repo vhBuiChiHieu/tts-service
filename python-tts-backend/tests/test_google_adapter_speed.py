@@ -1,4 +1,5 @@
 import json
+import logging
 
 from app.tts.google_adapter import GoogleTranslateAdapter
 
@@ -67,3 +68,32 @@ def test_parse_batchexecute_audio_base64_raises_value_error_on_null_payload():
         assert isinstance(exc, ValueError)
     else:
         assert False, "Expected ValueError"
+
+
+def test_adapter_logs_raw_response_when_parse_fails_and_speed_is_default(monkeypatch, caplog):
+    adapter = GoogleTranslateAdapter(token_manager=DummyTokenManager(), request_timeout_sec=20, user_agent="ua")
+
+    class DummyResponse:
+        def __init__(self, text: str):
+            self.text = text
+
+        def raise_for_status(self):
+            return None
+
+    def fake_post(*args, **kwargs):
+        return DummyResponse("raw-invalid-body-xyz")
+
+    monkeypatch.setattr("app.tts.google_adapter.requests.post", fake_post)
+
+    with caplog.at_level(logging.WARNING):
+        try:
+            adapter.synthesize_base64("xin chao", "vi", reqid=10001, speed=1.0)
+        except ValueError:
+            pass
+        else:
+            assert False, "Expected ValueError"
+
+    assert any(
+        "batchexecute parse failed" in rec.message and "raw-invalid-body-xyz" in rec.message
+        for rec in caplog.records
+    )

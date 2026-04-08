@@ -48,7 +48,7 @@ def test_process_job_marks_success(db_session):
     assert saved.progress_pct == 100.0
 
 
-def test_process_job_passes_speed_to_adapter(db_session):
+def test_process_job_uses_default_provider_speed(db_session):
     from app.db.repo_jobs import JobRepo
 
     repo = JobRepo(db_session)
@@ -71,4 +71,30 @@ def test_process_job_passes_speed_to_adapter(db_session):
         max_chars=200,
     )
 
-    assert adapter.calls[0]["speed"] == 1.4
+    assert adapter.calls[0]["speed"] == 1.0
+
+
+def test_process_job_forces_provider_speed_to_1(db_session):
+    from app.db.repo_jobs import JobRepo
+
+    repo = JobRepo(db_session)
+    job = repo.create_job(
+        input_text="Xin chao. Day la test.",
+        lang="vi",
+        voice_hint=None,
+        speed=2.0,
+        volume_gain_db=0.0,
+    )
+
+    adapter = DummyAdapter()
+    process_job(
+        job_id=job.job_id,
+        repo=repo,
+        chunker=lambda text, max_chars: [{"chunk_index": 1, "char_end": len(text), "text": text}],
+        adapter=adapter,
+        merger=DummyMerger(),
+        output_path="outputs/test.mp3",
+        max_chars=200,
+    )
+
+    assert adapter.calls[0]["speed"] == 1.0

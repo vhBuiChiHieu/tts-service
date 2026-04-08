@@ -34,6 +34,7 @@ def start_worker() -> threading.Thread:
                     merger = AudioMerger(
                         silent_between_chunks_ms=settings.silent_between_chunks_ms,
                         volume_gain_db=job.volume_gain_db,
+                        speed=job.speed,
                     )
                     output_path = f"{settings.output_dir}/{job.job_id}.mp3"
                     process_job(

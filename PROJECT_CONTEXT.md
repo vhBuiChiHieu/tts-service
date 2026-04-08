@@ -18,7 +18,7 @@ Các module chính:
 - `app/api/jobs.py`: API tạo job và theo dõi job (`/v1/jobs`, `/v1/jobs/{job_id}`).
 - `app/db/`: SQLAlchemy session/model/repository cho bảng jobs.
 - `app/tts/`: token manager, Google adapter, chunker.
-- `app/audio/merger.py`: decode base64 MP3 + ghép audio + export file.
+- `app/audio/merger.py`: decode base64 MP3, áp `volume_gain_db`, áp speed hậu kỳ toàn file (`atempo`), rồi export file.
 - `app/worker/`: worker loop và processor xử lý từng job.
 - `tests/`: test cho health/api/repo/chunker/google adapter/processor/recovery.
 
@@ -26,12 +26,13 @@ Các module chính:
 1. Client gọi `POST /v1/jobs` với `text`, `lang`, `voice_hint`, `metadata`, `speed`, `volume_gain_db`.
 2. API validate `speed` (0.5-2.0) và `volume_gain_db` (-20.0 đến 20.0), tạo bản ghi job `QUEUED` trong SQLite.
 3. Worker polling định kỳ lấy job `QUEUED` đầu tiên (FIFO), chuyển `RUNNING`.
-4. Processor tách text thành chunks (có offset), gọi provider TTS cho từng chunk với `speed` theo job.
+4. Processor tách text thành chunks (có offset), gọi provider TTS cho từng chunk với `speed=1.0` để ổn định provider response.
 5. Sau mỗi chunk, cập nhật progress (`processed_chunks`, `progress_pct`, vị trí char).
-6. Merger áp `volume_gain_db` lên từng chunk audio trước khi ghép và export `outputs/<job_id>.mp3`.
-7. Google adapter thử payload speed custom trước; nếu parse lỗi thì fallback 1 lần với `speed=1.0`.
-8. Thành công: `SUCCEEDED` + thông tin file/duration.
-9. Thất bại: `FAILED` + `error_code`/`error_message`.
+6. Merger áp `volume_gain_db` lên từng chunk audio trước khi ghép.
+7. Khi export, Merger áp speed hậu kỳ trên toàn file bằng ffmpeg `atempo` theo `job.speed`, rồi export `outputs/<job_id>.mp3`.
+8. Google adapter vẫn giữ fallback an toàn về `speed=1.0` và log raw response khi parse fail.
+9. Thành công: `SUCCEEDED` + thông tin file/duration.
+10. Thất bại: `FAILED` + `error_code`/`error_message`.
 
 ## 4. Dữ liệu job tracking
 Thông tin tracking gồm:
@@ -62,10 +63,12 @@ Giá trị mặc định hiện tại (chạy từ repo root):
 - Worker xử lý bất đồng bộ hoạt động.
 - Đã hỗ trợ per-job `speed` + `volume_gain_db`, có validate input ở API.
 - DB đã persist `speed` và `volume_gain_db` theo từng job.
-- Google adapter có fallback an toàn về `speed=1.0` nếu response speed custom parse lỗi.
+- Speed hiện được xử lý hậu kỳ ở bước export audio (ffmpeg `atempo`) để chủ động và ổn định hơn provider speed.
+- Processor hiện gọi provider với `speed=1.0` để tránh lỗi response khi speed custom.
+- Google adapter có fallback an toàn về `speed=1.0` nếu parse lỗi, đồng thời có log raw response để debug.
 - Đã fix parser token cho trường hợp Google không trả key `SNlM0e`.
 - End-to-end đã tạo thành công file MP3 (khi có ffmpeg/ffprobe).
-- Test suite hiện có: 20 tests, đang pass.
+- Test suite hiện có: 27 pass, 1 skipped.
 
 ## 7. Giới hạn hiện tại
 - Phụ thuộc vào endpoint nội bộ Google Translate (có thể thay đổi format bất kỳ lúc nào).

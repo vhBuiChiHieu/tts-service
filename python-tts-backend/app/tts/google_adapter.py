@@ -1,7 +1,10 @@
 import json
+import logging
 from urllib.parse import urlencode
 
 import requests
+
+logger = logging.getLogger(__name__)
 
 
 def parse_batchexecute_audio_base64(body: str) -> str:
@@ -63,9 +66,14 @@ class GoogleTranslateAdapter:
         try:
             return parse_batchexecute_audio_base64(response_text)
         except ValueError:
+            logger.warning("batchexecute parse failed; reqid=%s speed=%s raw=%r", reqid, speed, response_text)
             if speed == 1.0:
                 raise
 
         fallback_f_req = self._build_rpc_payload(text, lang, 1.0)
         fallback_response = self._post_batchexecute(fallback_f_req, reqid=reqid)
-        return parse_batchexecute_audio_base64(fallback_response)
+        try:
+            return parse_batchexecute_audio_base64(fallback_response)
+        except ValueError:
+            logger.warning("batchexecute parse failed on fallback; reqid=%s raw=%r", reqid, fallback_response)
+            raise
