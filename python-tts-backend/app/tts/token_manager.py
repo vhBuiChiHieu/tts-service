@@ -9,9 +9,9 @@ def parse_tokens(html: str) -> dict[str, str]:
     fsid = re.search(r'"FdrFJe":"(.*?)"', html)
     bl = re.search(r'"cfb2h":"(.*?)"', html)
     at = re.search(r'"SNlM0e":"(.*?)"', html)
-    if not fsid or not bl or not at:
+    if not fsid or not bl:
         raise ValueError("cannot parse tokens")
-    return {"f.sid": fsid.group(1), "bl": bl.group(1), "at": at.group(1)}
+    return {"f.sid": fsid.group(1), "bl": bl.group(1), "at": at.group(1) if at else ""}
 
 
 @dataclass
