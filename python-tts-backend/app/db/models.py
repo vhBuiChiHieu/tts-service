@@ -19,6 +19,8 @@ class Job(Base):
     input_text: Mapped[str] = mapped_column(Text, nullable=False)
     lang: Mapped[str] = mapped_column(String, nullable=False)
     voice_hint: Mapped[str | None] = mapped_column(String, nullable=True)
+    speed: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
+    volume_gain_db: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
 
     total_chars: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     total_chunks: Mapped[int | None] = mapped_column(Integer, nullable=True)

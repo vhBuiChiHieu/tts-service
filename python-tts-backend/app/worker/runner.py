@@ -31,7 +31,10 @@ def start_worker() -> threading.Thread:
                 job = repo.get_next_queued_job()
                 if job:
                     os.makedirs(settings.output_dir, exist_ok=True)
-                    merger = AudioMerger(silent_between_chunks_ms=settings.silent_between_chunks_ms)
+                    merger = AudioMerger(
+                        silent_between_chunks_ms=settings.silent_between_chunks_ms,
+                        volume_gain_db=job.volume_gain_db,
+                    )
                     output_path = f"{settings.output_dir}/{job.job_id}.mp3"
                     process_job(
                         job_id=job.job_id,

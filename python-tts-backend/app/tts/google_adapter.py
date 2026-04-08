@@ -21,7 +21,14 @@ class GoogleTranslateAdapter:
         self.request_timeout_sec = request_timeout_sec
         self.user_agent = user_agent
 
-    def synthesize_base64(self, text: str, lang: str, reqid: int) -> str:
+    def _build_rpc_payload(self, text: str, lang: str, speed: float) -> str:
+        if speed == 1.0:
+            inner = [text, lang, None]
+        else:
+            inner = [text, lang, None, speed]
+        return json.dumps([[["jQ1olc", json.dumps(inner), None, "generic"]]])
+
+    def _post_batchexecute(self, f_req: str, reqid: int) -> str:
         tokens = self.token_manager.get_tokens()
         query = {
             "rpcids": "jQ1olc",
@@ -34,9 +41,7 @@ class GoogleTranslateAdapter:
             "_reqid": str(reqid),
             "rt": "c",
         }
-        f_req = json.dumps([[["jQ1olc", json.dumps([text, lang, None]), None, "generic"]]])
         body = urlencode({"f.req": f_req, "at": tokens["at"]})
-
         response = requests.post(
             f"https://translate.google.com/_/TranslateWebserverUi/data/batchexecute?{urlencode(query)}",
             data=body,
@@ -47,4 +52,17 @@ class GoogleTranslateAdapter:
             timeout=self.request_timeout_sec,
         )
         response.raise_for_status()
-        return parse_batchexecute_audio_base64(response.text)
+        return response.text
+
+    def synthesize_base64(self, text: str, lang: str, reqid: int, speed: float = 1.0) -> str:
+        f_req = self._build_rpc_payload(text, lang, speed)
+        response_text = self._post_batchexecute(f_req=f_req, reqid=reqid)
+        try:
+            return parse_batchexecute_audio_base64(response_text)
+        except ValueError:
+            if speed == 1.0:
+                raise
+
+        fallback_f_req = self._build_rpc_payload(text, lang, 1.0)
+        fallback_response = self._post_batchexecute(fallback_f_req, reqid=reqid)
+        return parse_batchexecute_audio_base64(fallback_response)

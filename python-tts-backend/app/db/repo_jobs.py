@@ -14,11 +14,20 @@ class JobRepo:
     def __init__(self, db: Session) -> None:
         self.db = db
 
-    def create_job(self, input_text: str, lang: str, voice_hint: str | None) -> Job:
+    def create_job(
+        self,
+        input_text: str,
+        lang: str,
+        voice_hint: str | None,
+        speed: float,
+        volume_gain_db: float,
+    ) -> Job:
         job = Job(
             input_text=input_text,
             lang=lang,
             voice_hint=voice_hint,
+            speed=speed,
+            volume_gain_db=volume_gain_db,
             total_chars=len(input_text),
             status="QUEUED",
             updated_at=now_iso(),

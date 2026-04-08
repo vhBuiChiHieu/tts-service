@@ -19,7 +19,12 @@ def process_job(job_id, repo, chunker, adapter, merger, output_path, max_chars):
             last_error = None
             for _ in range(settings.chunk_retry_max + 1):
                 try:
-                    b64 = adapter.synthesize_base64(chunk["text"], job.lang, reqid=10000 + idx)
+                    b64 = adapter.synthesize_base64(
+                        chunk["text"],
+                        job.lang,
+                        reqid=10000 + idx,
+                        speed=job.speed,
+                    )
                     merger.append_base64_mp3(b64)
                     break
                 except ValueError as exc:

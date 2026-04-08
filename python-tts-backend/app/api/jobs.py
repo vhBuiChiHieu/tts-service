@@ -19,7 +19,13 @@ def get_db():
 @router.post("", response_model=CreateJobResponse, status_code=202)
 def create_job(payload: CreateJobRequest, db: Session = Depends(get_db)):
     repo = JobRepo(db)
-    job = repo.create_job(input_text=payload.text, lang=payload.lang, voice_hint=payload.voice_hint)
+    job = repo.create_job(
+        input_text=payload.text,
+        lang=payload.lang,
+        voice_hint=payload.voice_hint,
+        speed=payload.speed,
+        volume_gain_db=payload.volume_gain_db,
+    )
     return CreateJobResponse(job_id=job.job_id, status=job.status, created_at=job.created_at)
 
 
