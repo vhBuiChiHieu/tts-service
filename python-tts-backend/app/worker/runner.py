@@ -16,6 +16,11 @@ def recover_running_jobs(repo: JobRepo) -> None:
     repo.requeue_running_jobs()
 
 
+def build_output_path(output_dir: str, job_id: str, output_prefix: str | None) -> str:
+    file_name = f"{job_id}.mp3" if not output_prefix else f"{output_prefix}-{job_id}.mp3"
+    return f"{output_dir}/{file_name}"
+
+
 def start_worker() -> threading.Thread:
     def loop() -> None:
         token_manager = TokenManager(ttl_sec=settings.token_ttl_sec, user_agent="Mozilla/5.0")
@@ -36,7 +41,7 @@ def start_worker() -> threading.Thread:
                         volume_gain_db=job.volume_gain_db,
                         speed=job.speed,
                     )
-                    output_path = f"{settings.output_dir}/{job.job_id}.mp3"
+                    output_path = build_output_path(settings.output_dir, job.job_id, job.output_prefix)
                     process_job(
                         job_id=job.job_id,
                         repo=repo,

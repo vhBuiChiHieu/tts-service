@@ -62,3 +62,18 @@ def test_update_progress(db_session):
     assert saved.total_chunks == 10
     assert saved.processed_chunks == 3
     assert saved.progress_pct == 30.0
+
+
+def test_create_job_persists_output_prefix(db_session):
+    repo = JobRepo(db_session)
+    job = repo.create_job(
+        input_text="xin chao",
+        lang="vi",
+        voice_hint=None,
+        speed=1.0,
+        volume_gain_db=0.0,
+        output_prefix="7577371088154266649-200-202",
+    )
+
+    saved = repo.get_job(job.job_id)
+    assert saved.output_prefix == "7577371088154266649-200-202"

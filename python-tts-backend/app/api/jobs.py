@@ -1,7 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
-from app.core.schemas import CreateJobRequest, CreateJobResponse, JobTrackingResponse
+from app.core.schemas import (
+    CreateJobRequest,
+    CreateJobResponse,
+    JobTrackingResponse,
+    SangTacVietCreateJobRequest,
+)
 from app.db.repo_jobs import JobRepo
 from app.db.session import SessionLocal
 
@@ -25,6 +30,31 @@ def create_job(payload: CreateJobRequest, db: Session = Depends(get_db)):
         voice_hint=payload.voice_hint,
         speed=payload.speed,
         volume_gain_db=payload.volume_gain_db,
+    )
+    return CreateJobResponse(job_id=job.job_id, status=job.status, created_at=job.created_at)
+
+
+@router.post("/sangtacviet", response_model=CreateJobResponse, status_code=202)
+def create_job_sangtacviet(payload: SangTacVietCreateJobRequest, db: Session = Depends(get_db)):
+    repo = JobRepo(db)
+
+    chapter_texts = [chapter.text.strip() for chapter in payload.chapters]
+    if any(not text for text in chapter_texts):
+        raise HTTPException(status_code=422, detail="chapter text must be non-empty")
+
+    merged_text = " ".join(chapter_texts).strip()
+    if not merged_text:
+        raise HTTPException(status_code=422, detail="merged chapter text is empty")
+
+    output_prefix = f"{payload.book_id}-{payload.range.start}-{payload.range.end}"
+
+    job = repo.create_job(
+        input_text=merged_text,
+        lang=payload.lang,
+        voice_hint=payload.voice_hint,
+        speed=payload.speed,
+        volume_gain_db=payload.volume_gain_db,
+        output_prefix=output_prefix,
     )
     return CreateJobResponse(job_id=job.job_id, status=job.status, created_at=job.created_at)
 

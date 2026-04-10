@@ -21,6 +21,7 @@ class JobRepo:
         voice_hint: str | None,
         speed: float,
         volume_gain_db: float,
+        output_prefix: str | None = None,
     ) -> Job:
         job = Job(
             input_text=input_text,
@@ -28,6 +29,7 @@ class JobRepo:
             voice_hint=voice_hint,
             speed=speed,
             volume_gain_db=volume_gain_db,
+            output_prefix=output_prefix,
             total_chars=len(input_text),
             status="QUEUED",
             updated_at=now_iso(),
