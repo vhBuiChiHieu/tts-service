@@ -70,6 +70,7 @@ class JobRepo:
         pct = 0.0 if total_chunks == 0 else round((processed_chunks / total_chunks) * 100.0, 2)
         job.total_chunks = total_chunks
         job.processed_chunks = processed_chunks
+        job.next_chunk_index = processed_chunks
         job.current_chunk_index = current_chunk_index
         job.current_char_offset = current_char_offset
         job.total_chars = total_chars
@@ -91,16 +92,33 @@ class JobRepo:
         job.updated_at = now_iso()
         self.db.commit()
 
-    def mark_failed(self, job_id: str, error_code: str, error_message: str) -> None:
+    def mark_failed(self, job_id: str, error_code: str, error_message: str, retryable: bool = False) -> None:
         job = self.get_job(job_id)
         if not job:
             return
         job.status = "FAILED"
         job.error_code = error_code
         job.error_message = error_message
+        job.last_error_retryable = 1 if retryable else 0
         job.finished_at = now_iso()
         job.updated_at = now_iso()
         self.db.commit()
+
+    def mark_retryable_failure(self, job_id: str, error_code: str, error_message: str) -> None:
+        self.mark_failed(job_id, error_code, error_message, retryable=True)
+
+    def retry_failed_job(self, job_id: str) -> bool:
+        job = self.get_job(job_id)
+        if not job or job.status != "FAILED":
+            return False
+        job.status = "QUEUED"
+        job.error_code = None
+        job.error_message = None
+        job.finished_at = None
+        job.attempt_count += 1
+        job.updated_at = now_iso()
+        self.db.commit()
+        return True
 
     def requeue_running_jobs(self) -> None:
         stmt = select(Job).where(Job.status == "RUNNING")

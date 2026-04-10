@@ -77,6 +77,61 @@ def test_update_progress(db_session):
     assert saved.progress_pct == 30.0
 
 
+def test_update_progress_persists_next_chunk_index(db_session):
+    repo = JobRepo(db_session)
+    job = repo.create_job(input_text="abcdef", lang="vi", voice_hint=None, speed=1.0, volume_gain_db=0.0)
+
+    repo.mark_running(job.job_id)
+    repo.update_progress(
+        job_id=job.job_id,
+        total_chunks=6,
+        processed_chunks=4,
+        current_chunk_index=4,
+        current_char_offset=4,
+        total_chars=6,
+    )
+
+    saved = repo.get_job(job.job_id)
+    assert saved.next_chunk_index == 4
+
+
+def test_retry_failed_job_requeues_and_clears_error(db_session):
+    repo = JobRepo(db_session)
+    job = repo.create_job(input_text="abc", lang="vi", voice_hint=None, speed=1.0, volume_gain_db=0.0)
+
+    repo.mark_running(job.job_id)
+    repo.update_progress(
+        job_id=job.job_id,
+        total_chunks=10,
+        processed_chunks=3,
+        current_chunk_index=3,
+        current_char_offset=120,
+        total_chars=400,
+    )
+    repo.mark_failed(job.job_id, "UPSTREAM_TIMEOUT", "provider timeout", retryable=True)
+
+    ok = repo.retry_failed_job(job.job_id)
+    saved = repo.get_job(job.job_id)
+
+    assert ok is True
+    assert saved.status == "QUEUED"
+    assert saved.error_code is None
+    assert saved.error_message is None
+    assert saved.finished_at is None
+    assert saved.last_error_retryable == 1
+
+
+def test_retry_failed_job_rejects_non_failed_status(db_session):
+    repo = JobRepo(db_session)
+    job = repo.create_job(input_text="abc", lang="vi", voice_hint=None, speed=1.0, volume_gain_db=0.0)
+
+    ok = repo.retry_failed_job(job.job_id)
+    saved = repo.get_job(job.job_id)
+
+    assert ok is False
+    assert saved.status == "QUEUED"
+
+
 def test_create_job_persists_output_prefix(db_session):
     repo = JobRepo(db_session)
     job = repo.create_job(
