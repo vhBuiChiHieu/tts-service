@@ -19,6 +19,16 @@ def test_create_job_defaults(db_session):
     assert job.volume_gain_db == 0.0
 
 
+def test_create_job_sets_retry_resume_defaults(db_session):
+    repo = JobRepo(db_session)
+    job = repo.create_job(input_text="abc", lang="vi", voice_hint=None, speed=1.0, volume_gain_db=0.0)
+
+    saved = repo.get_job(job.job_id)
+    assert saved.next_chunk_index == 0
+    assert saved.attempt_count == 0
+    assert saved.last_error_retryable is None
+
+
 def test_create_job_persists_speed_and_volume(db_session):
     repo = JobRepo(db_session)
     job = repo.create_job(

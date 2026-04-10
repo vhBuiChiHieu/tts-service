@@ -29,6 +29,9 @@ class Job(Base):
     progress_pct: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     current_chunk_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     current_char_offset: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    next_chunk_index: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_error_retryable: Mapped[int | None] = mapped_column(Integer, nullable=True)
 
     result_file_name: Mapped[str | None] = mapped_column(String, nullable=True)
     result_file_path: Mapped[str | None] = mapped_column(String, nullable=True)
