@@ -3,7 +3,8 @@
 Backend TTS local bằng FastAPI + SQLite + worker thread, tạo MP3 từ text qua Google Translate batchexecute.
 
 ## Features
-- Tạo job TTS qua API.
+- Tạo job TTS qua API (`/v1/jobs`).
+- Tạo job từ payload chapter Sáng Tác Việt (`/v1/jobs/sangtacviet`).
 - Hỗ trợ per-job `speed` và `volume_gain_db` với default an toàn.
 - Theo dõi tiến độ xử lý job theo thời gian thực.
 - Xử lý chunk + retry + random delay.
@@ -143,14 +144,45 @@ Response mẫu:
 }
 ```
 
-### 3) Track job
+### 3) Create TTS job từ payload Sáng Tác Việt
+```bash
+curl -s -X POST "http://127.0.0.1:8000/v1/jobs/sangtacviet" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "book_id": "7577371088154266649",
+    "range": {"start": 200, "end": 202},
+    "chapters": [
+      {"chapter_number": 200, "text": "Doan 1"},
+      {"chapter_number": 201, "text": "Doan 2"},
+      {"chapter_number": 202, "text": "Doan 3"}
+    ],
+    "lang": "vi",
+    "voice_hint": null,
+    "metadata": {"source": "sangtacviet"},
+    "speed": 1.2,
+    "volume_gain_db": 3.0
+  }'
+```
+
+Ràng buộc bổ sung cho endpoint này:
+- `book_id`: bắt buộc, non-empty
+- `range.start <= range.end`
+- `chapters`: không rỗng
+- mỗi `chapters[i].text`: non-empty (sau trim)
+
+Behavior:
+- Hệ thống gom toàn bộ `chapters[].text` bằng **1 dấu cách** rồi enqueue như job thường.
+- Tên file output sẽ có prefix: `{book_id}-{start}-{end}-{job_id}.mp3`.
+
+### 4) Track job
 ```bash
 curl -s "http://127.0.0.1:8000/v1/jobs/<job_id>"
 ```
 
 Khi thành công:
 - `status = SUCCEEDED`
-- `result.file_path = python-tts-backend/outputs/<job_id>.mp3`
+- Với job thường: `result.file_path = python-tts-backend/outputs/<job_id>.mp3`
+- Với job Sáng Tác Việt: `result.file_path = python-tts-backend/outputs/<book_id>-<start>-<end>-<job_id>.mp3`
 
 Khi lỗi:
 - `status = FAILED`
