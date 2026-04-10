@@ -119,6 +119,46 @@ def test_retry_failed_job_requeues_and_clears_error(db_session):
     assert saved.error_message is None
     assert saved.finished_at is None
     assert saved.last_error_retryable == 1
+    assert saved.attempt_count == 1
+
+
+def test_retry_failed_job_rejects_non_retryable_failure(db_session):
+    repo = JobRepo(db_session)
+    job = repo.create_job(input_text="abc", lang="vi", voice_hint=None, speed=1.0, volume_gain_db=0.0)
+
+    repo.mark_failed(job.job_id, "INPUT_INVALID", "bad input", retryable=False)
+    ok = repo.retry_failed_job(job.job_id)
+    saved = repo.get_job(job.job_id)
+
+    assert ok is False
+    assert saved.status == "FAILED"
+
+
+def test_mark_retryable_failure_updates_retry_metadata(db_session):
+    repo = JobRepo(db_session)
+    job = repo.create_job(input_text="abc", lang="vi", voice_hint=None, speed=1.0, volume_gain_db=0.0)
+
+    repo.mark_retryable_failure(job.job_id, "PROVIDER_TIMEOUT", "timeout")
+    saved = repo.get_job(job.job_id)
+
+    assert saved.status == "QUEUED"
+    assert saved.attempt_count == 1
+    assert saved.last_error_retryable == 1
+    assert saved.error_code == "PROVIDER_TIMEOUT"
+    assert saved.error_message == "timeout"
+    assert saved.finished_at is None
+
+
+def test_retry_failed_job_increments_attempt_count(db_session):
+    repo = JobRepo(db_session)
+    job = repo.create_job(input_text="abc", lang="vi", voice_hint=None, speed=1.0, volume_gain_db=0.0)
+
+    repo.mark_failed(job.job_id, "PROVIDER_RESPONSE_INVALID", "parse fail", retryable=True)
+    ok = repo.retry_failed_job(job.job_id)
+    saved = repo.get_job(job.job_id)
+
+    assert ok is True
+    assert saved.attempt_count == 1
 
 
 def test_retry_failed_job_rejects_non_failed_status(db_session):

@@ -105,11 +105,21 @@ class JobRepo:
         self.db.commit()
 
     def mark_retryable_failure(self, job_id: str, error_code: str, error_message: str) -> None:
-        self.mark_failed(job_id, error_code, error_message, retryable=True)
+        job = self.get_job(job_id)
+        if not job:
+            return
+        job.status = "QUEUED"
+        job.attempt_count += 1
+        job.last_error_retryable = 1
+        job.error_code = error_code
+        job.error_message = error_message
+        job.finished_at = None
+        job.updated_at = now_iso()
+        self.db.commit()
 
     def retry_failed_job(self, job_id: str) -> bool:
         job = self.get_job(job_id)
-        if not job or job.status != "FAILED":
+        if not job or job.status != "FAILED" or job.last_error_retryable != 1:
             return False
         job.status = "QUEUED"
         job.error_code = None
