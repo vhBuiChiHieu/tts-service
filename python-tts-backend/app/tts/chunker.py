@@ -53,9 +53,10 @@ def build_chunks(text: str, max_chars: int) -> list[dict]:
 
         while len(current) > max_chars:
             split_at = max_chars
-            window = current[: max_chars + 1]
-            punct_at = max(window.rfind("."), window.rfind("!"), window.rfind("?"), window.rfind(";"), window.rfind(","), window.rfind(":"))
-            space_at = window.rfind(" ")
+            window_punct = current[: max_chars]
+            window_space = current[: max_chars + 1]
+            punct_at = max(window_punct.rfind("."), window_punct.rfind("!"), window_punct.rfind("?"), window_punct.rfind(";"), window_punct.rfind(","), window_punct.rfind(":"))
+            space_at = window_space.rfind(" ")
 
             if punct_at > 0:
                 split_at = punct_at + 1

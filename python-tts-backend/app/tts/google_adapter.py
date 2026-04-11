@@ -66,7 +66,7 @@ class GoogleTranslateAdapter:
         try:
             return parse_batchexecute_audio_base64(response_text)
         except ValueError:
-            logger.warning("batchexecute parse failed; reqid=%s speed=%s raw=%r", reqid, speed, response_text)
+            logger.warning("batchexecute parse failed; reqid=%s speed=%s raw=%r textInput=%s", reqid, speed, response_text, text)
             if speed == 1.0:
                 raise
 
