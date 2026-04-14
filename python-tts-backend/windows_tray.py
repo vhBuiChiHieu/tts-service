@@ -14,6 +14,7 @@ from pystray import MenuItem as Item
 from app.core.config import settings
 
 BASE_URL = f"http://{settings.host}:{settings.port}"
+DOCS_URL = f"{BASE_URL}/docs"
 HEALTH_URL = f"{BASE_URL}/health"
 STATUS_URL = f"{BASE_URL}/v1/control/status"
 SHUTDOWN_URL = f"{BASE_URL}/v1/control/shutdown"
@@ -159,11 +160,21 @@ class TrayController:
             return
         self._open_in_browser(BASE_URL)
 
+    def _open_docs_sync(self) -> None:
+        if not self._is_backend_running():
+            self._set_status_text("Backend not running")
+            self._open_log()
+            return
+        self._open_in_browser(DOCS_URL)
+
     def _stop_backend_async(self) -> None:
         threading.Thread(target=self.stop_backend, daemon=True).start()
 
     def _open_api_async(self) -> None:
         threading.Thread(target=self._open_api_sync, daemon=True).start()
+
+    def _open_docs_async(self) -> None:
+        threading.Thread(target=self._open_docs_sync, daemon=True).start()
 
     def _open_outputs_async(self) -> None:
         threading.Thread(target=self.open_outputs, daemon=True).start()
@@ -198,6 +209,9 @@ class TrayController:
 
     def _menu_open_api(self, icon: pystray.Icon | None = None, item=None) -> None:
         self._open_api_async()
+
+    def _menu_open_docs(self, icon: pystray.Icon | None = None, item=None) -> None:
+        self._open_docs_async()
 
     def _menu_open_outputs(self, icon: pystray.Icon | None = None, item=None) -> None:
         self._open_outputs_async()
@@ -263,6 +277,7 @@ class TrayController:
             self._action_item("Start backend", self._menu_start),
             self._action_item("Stop backend", self._menu_stop),
             self._action_item("Open API", self._menu_open_api),
+            self._action_item("Open Swagger Docs", self._menu_open_docs),
             self._action_item("Open outputs", self._menu_open_outputs),
             self._log_menu_item(),
             self._action_item("Refresh status", self._menu_refresh),

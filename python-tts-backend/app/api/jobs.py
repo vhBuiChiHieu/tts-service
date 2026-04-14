@@ -1,9 +1,29 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException, Path
 from sqlalchemy.orm import Session
 
 from app.core.schemas import (
+    CREATE_JOB_DESCRIPTION,
+    CREATE_JOB_OPERATION_ID,
+    CREATE_JOB_SUMMARY,
+    JOB_BODY_EXAMPLES,
+    JOB_CREATE_RESPONSES,
+    JOB_ID_DESCRIPTION,
+    JOB_ID_EXAMPLE,
+    JOB_TRACKING_RESPONSES,
+    SANGTACVIET_BODY_EXAMPLES,
+    SANGTACVIET_DESCRIPTION,
+    SANGTACVIET_OPERATION_ID,
+    SANGTACVIET_RESPONSES,
+    SANGTACVIET_SUMMARY,
+    TRACK_JOB_DESCRIPTION,
+    TRACK_JOB_OPERATION_ID,
+    TRACK_JOB_SUMMARY,
     CreateJobRequest,
     CreateJobResponse,
+    JobErrorResponse,
+    JobPositionResponse,
+    JobProgressResponse,
+    JobResultResponse,
     JobTrackingResponse,
     SangTacVietCreateJobRequest,
 )
@@ -21,8 +41,19 @@ def get_db():
         db.close()
 
 
-@router.post("", response_model=CreateJobResponse, status_code=202)
-def create_job(payload: CreateJobRequest, db: Session = Depends(get_db)):
+@router.post(
+    "",
+    response_model=CreateJobResponse,
+    status_code=202,
+    summary=CREATE_JOB_SUMMARY,
+    description=CREATE_JOB_DESCRIPTION,
+    operation_id=CREATE_JOB_OPERATION_ID,
+    responses=JOB_CREATE_RESPONSES,
+)
+def create_job(
+    payload: CreateJobRequest = Body(openapi_examples=JOB_BODY_EXAMPLES),
+    db: Session = Depends(get_db),
+):
     repo = JobRepo(db)
     job = repo.create_job(
         input_text=payload.text,
@@ -34,8 +65,19 @@ def create_job(payload: CreateJobRequest, db: Session = Depends(get_db)):
     return CreateJobResponse(job_id=job.job_id, status=job.status, created_at=job.created_at)
 
 
-@router.post("/sangtacviet", response_model=CreateJobResponse, status_code=202)
-def create_job_sangtacviet(payload: SangTacVietCreateJobRequest, db: Session = Depends(get_db)):
+@router.post(
+    "/sangtacviet",
+    response_model=CreateJobResponse,
+    status_code=202,
+    summary=SANGTACVIET_SUMMARY,
+    description=SANGTACVIET_DESCRIPTION,
+    operation_id=SANGTACVIET_OPERATION_ID,
+    responses=SANGTACVIET_RESPONSES,
+)
+def create_job_sangtacviet(
+    payload: SangTacVietCreateJobRequest = Body(openapi_examples=SANGTACVIET_BODY_EXAMPLES),
+    db: Session = Depends(get_db),
+):
     repo = JobRepo(db)
 
     chapter_texts = [chapter.text.strip() for chapter in payload.chapters]
@@ -59,8 +101,18 @@ def create_job_sangtacviet(payload: SangTacVietCreateJobRequest, db: Session = D
     return CreateJobResponse(job_id=job.job_id, status=job.status, created_at=job.created_at)
 
 
-@router.get("/{job_id}", response_model=JobTrackingResponse)
-def get_job(job_id: str, db: Session = Depends(get_db)):
+@router.get(
+    "/{job_id}",
+    response_model=JobTrackingResponse,
+    summary=TRACK_JOB_SUMMARY,
+    description=TRACK_JOB_DESCRIPTION,
+    operation_id=TRACK_JOB_OPERATION_ID,
+    responses=JOB_TRACKING_RESPONSES,
+)
+def get_job(
+    job_id: str = Path(..., description=JOB_ID_DESCRIPTION, examples=[JOB_ID_EXAMPLE]),
+    db: Session = Depends(get_db),
+):
     repo = JobRepo(db)
     job = repo.get_job(job_id)
     if not job:
@@ -69,23 +121,23 @@ def get_job(job_id: str, db: Session = Depends(get_db)):
     return JobTrackingResponse(
         job_id=job.job_id,
         status=job.status,
-        progress={
-            "total_chunks": job.total_chunks,
-            "processed_chunks": job.processed_chunks,
-            "progress_pct": job.progress_pct,
-            "position": {
-                "current_chunk_index": job.current_chunk_index,
-                "current_char_offset": job.current_char_offset,
-                "total_chars": job.total_chars,
-            },
-        },
-        result={
-            "file_name": job.result_file_name,
-            "file_path": job.result_file_path,
-            "duration_ms": job.result_duration_ms,
-        },
+        progress=JobProgressResponse(
+            total_chunks=job.total_chunks,
+            processed_chunks=job.processed_chunks,
+            progress_pct=job.progress_pct,
+            position=JobPositionResponse(
+                current_chunk_index=job.current_chunk_index,
+                current_char_offset=job.current_char_offset,
+                total_chars=job.total_chars,
+            ),
+        ),
+        result=JobResultResponse(
+            file_name=job.result_file_name,
+            file_path=job.result_file_path,
+            duration_ms=job.result_duration_ms,
+        ),
         error=(
-            {"code": job.error_code, "message": job.error_message}
+            JobErrorResponse(code=job.error_code, message=job.error_message)
             if job.error_code or job.error_message
             else None
         ),

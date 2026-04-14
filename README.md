@@ -42,10 +42,17 @@ Tray menu hiện có:
 - Start backend
 - Stop backend
 - Open API
+- Open Swagger Docs
 - Open outputs
 - Refresh status
 - Exit tray
 - Exit and stop backend
+
+Swagger/OpenAPI docs mặc định có tại:
+- `http://127.0.0.1:8000/docs`
+- `http://127.0.0.1:8000/openapi.json`
+
+Nếu backend chưa chạy, các mục `Open API` và `Open Swagger Docs` sẽ không mở URL chết mà sẽ báo trạng thái và mở `python-tts-backend/backend.log` nếu có.
 
 ### Chạy backend trực tiếp không qua tray
 ```bash

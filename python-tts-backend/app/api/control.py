@@ -1,9 +1,21 @@
 import threading
-from typing import Any
 
 from fastapi import APIRouter, Header, HTTPException, Request
 
 from app.core.config import settings
+from app.core.schemas import (
+    CONTROL_SHUTDOWN_DESCRIPTION,
+    CONTROL_SHUTDOWN_OPERATION_ID,
+    CONTROL_SHUTDOWN_RESPONSES,
+    CONTROL_SHUTDOWN_SUMMARY,
+    CONTROL_STATUS_DESCRIPTION,
+    CONTROL_STATUS_OPERATION_ID,
+    CONTROL_STATUS_RESPONSES,
+    CONTROL_STATUS_SUMMARY,
+    CONTROL_TOKEN_DESCRIPTION,
+    ControlShutdownResponse,
+    ControlStatusResponse,
+)
 from app.db.repo_jobs import JobRepo
 from app.db.session import SessionLocal
 from app.worker.runner import get_worker_status
@@ -48,35 +60,49 @@ def _request_shutdown(app) -> None:
     threading.Timer(0.2, _delayed_exit).start()
 
 
-@router.get("/status")
-def control_status(request: Request) -> dict[str, Any]:
+@router.get(
+    "/status",
+    response_model=ControlStatusResponse,
+    summary=CONTROL_STATUS_SUMMARY,
+    description=CONTROL_STATUS_DESCRIPTION,
+    operation_id=CONTROL_STATUS_OPERATION_ID,
+    responses=CONTROL_STATUS_RESPONSES,
+)
+def control_status(request: Request) -> ControlStatusResponse:
     host = _require_loopback(request)
     runtime = getattr(request.app.state, "runtime", None)
     if runtime is None:
-        return {
-            "pid": None,
-            "worker_alive": False,
-            "stop_requested": False,
-            "uptime_sec": 0.0,
-            "queued": 0,
-            "running": 0,
-            "client_host": host,
-        }
+        return ControlStatusResponse(
+            pid=None,
+            worker_alive=False,
+            stop_requested=False,
+            uptime_sec=0.0,
+            queued=0,
+            running=0,
+            client_host=host,
+        )
 
     with SessionLocal() as db:
         repo = JobRepo(db)
         payload = get_worker_status(runtime, repo)
 
     payload["client_host"] = host
-    return payload
+    return ControlStatusResponse(**payload)
 
 
-@router.post("/shutdown")
+@router.post(
+    "/shutdown",
+    response_model=ControlShutdownResponse,
+    summary=CONTROL_SHUTDOWN_SUMMARY,
+    description=CONTROL_SHUTDOWN_DESCRIPTION,
+    operation_id=CONTROL_SHUTDOWN_OPERATION_ID,
+    responses=CONTROL_SHUTDOWN_RESPONSES,
+)
 def control_shutdown(
     request: Request,
-    x_control_token: str | None = Header(default=None),
-) -> dict[str, str]:
+    x_control_token: str | None = Header(default=None, alias="X-Control-Token", description=CONTROL_TOKEN_DESCRIPTION),
+) -> ControlShutdownResponse:
     _require_loopback(request)
     _validate_token(x_control_token)
     _request_shutdown(request.app)
-    return {"status": "stopping"}
+    return ControlShutdownResponse(status="stopping")
