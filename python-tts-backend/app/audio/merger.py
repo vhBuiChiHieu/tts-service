@@ -1,7 +1,38 @@
 import base64
+import subprocess
+import sys
 from io import BytesIO
 
+import pydub.audio_segment
+import pydub.utils
 from pydub import AudioSegment
+
+
+def _patch_pydub_subprocess_for_windows() -> None:
+    if sys.platform != "win32":
+        return
+    if getattr(_patch_pydub_subprocess_for_windows, "_patched", False):
+        return
+
+    original_popen = subprocess.Popen
+    create_no_window = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+
+    def hidden_popen(*args, **kwargs):
+        startupinfo = kwargs.get("startupinfo")
+        if startupinfo is None:
+            startupinfo = subprocess.STARTUPINFO()
+        startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW
+        startupinfo.wShowWindow = subprocess.SW_HIDE
+        kwargs["startupinfo"] = startupinfo
+        kwargs["creationflags"] = kwargs.get("creationflags", 0) | create_no_window
+        return original_popen(*args, **kwargs)
+
+    pydub.audio_segment.subprocess.Popen = hidden_popen
+    pydub.utils.Popen = hidden_popen
+    _patch_pydub_subprocess_for_windows._patched = True
+
+
+_patch_pydub_subprocess_for_windows()
 
 
 class AudioMerger:
