@@ -1,23 +1,31 @@
 import random
-import time
+import threading
 
 from app.core.config import settings
 from app.core.errors import JobErrorCode
 
 
-def process_job(job_id, repo, chunker, adapter, merger, output_path, max_chars):
+def _raise_if_stopping(stop_event: threading.Event | None) -> None:
+    if stop_event and stop_event.is_set():
+        raise RuntimeError("backend is shutting down")
+
+
+def process_job(job_id, repo, chunker, adapter, merger, output_path, max_chars, stop_event=None):
     job = repo.get_job(job_id)
     if not job:
         return
 
     try:
+        _raise_if_stopping(stop_event)
         repo.mark_running(job_id)
         chunks = chunker(job.input_text, max_chars)
         total_chunks = len(chunks)
 
         for idx, chunk in enumerate(chunks, start=1):
+            _raise_if_stopping(stop_event)
             last_error = None
             for _ in range(settings.chunk_retry_max + 1):
+                _raise_if_stopping(stop_event)
                 try:
                     b64 = adapter.synthesize_base64(
                         chunk["text"],
@@ -41,11 +49,16 @@ def process_job(job_id, repo, chunker, adapter, merger, output_path, max_chars):
                 current_char_offset=chunk["char_end"],
                 total_chars=len(job.input_text),
             )
-            time.sleep(random.uniform(settings.random_delay_min_sec, settings.random_delay_max_sec))
+            delay = random.uniform(settings.random_delay_min_sec, settings.random_delay_max_sec)
+            if stop_event and stop_event.wait(delay):
+                raise RuntimeError("backend is shutting down")
 
+        _raise_if_stopping(stop_event)
         duration_ms = merger.export(output_path)
         repo.mark_success(job_id, output_path=output_path, duration_ms=duration_ms)
     except ValueError as exc:
         repo.mark_failed(job_id, JobErrorCode.PROVIDER_RESPONSE_INVALID, str(exc))
+    except RuntimeError as exc:
+        repo.mark_failed(job_id, JobErrorCode.BACKEND_SHUTDOWN, str(exc))
     except Exception as exc:
         repo.mark_failed(job_id, JobErrorCode.UNEXPECTED_ERROR, str(exc))

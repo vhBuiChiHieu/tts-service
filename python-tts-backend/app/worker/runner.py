@@ -2,10 +2,14 @@ import os
 import threading
 import time
 
+from sqlalchemy import func, select
+
 from app.audio.merger import AudioMerger
 from app.core.config import settings
+from app.db.models import Job
 from app.db.repo_jobs import JobRepo
 from app.db.session import SessionLocal
+from app.runtime import WorkerRuntime
 from app.tts.chunker import build_chunks
 from app.tts.google_adapter import GoogleTranslateAdapter
 from app.tts.token_manager import TokenManager
@@ -21,7 +25,9 @@ def build_output_path(output_dir: str, job_id: str, output_prefix: str | None) -
     return f"{output_dir}/{file_name}"
 
 
-def start_worker() -> threading.Thread:
+def start_worker() -> WorkerRuntime:
+    stop_event = threading.Event()
+
     def loop() -> None:
         token_manager = TokenManager(ttl_sec=settings.token_ttl_sec, user_agent="Mozilla/5.0")
         adapter = GoogleTranslateAdapter(
@@ -30,7 +36,7 @@ def start_worker() -> threading.Thread:
             user_agent="Mozilla/5.0",
         )
 
-        while True:
+        while not stop_event.is_set():
             with SessionLocal() as db:
                 repo = JobRepo(db)
                 job = repo.get_next_queued_job()
@@ -50,9 +56,39 @@ def start_worker() -> threading.Thread:
                         merger=merger,
                         output_path=output_path,
                         max_chars=settings.max_chars_per_chunk,
+                        stop_event=stop_event,
                     )
-            time.sleep(settings.worker_poll_interval_ms / 1000)
+            stop_event.wait(settings.worker_poll_interval_ms / 1000)
 
-    t = threading.Thread(target=loop, daemon=True)
-    t.start()
-    return t
+    thread = threading.Thread(target=loop, daemon=True, name="tts-worker")
+    thread.start()
+    return WorkerRuntime(thread=thread, stop_event=stop_event)
+
+
+def stop_worker(runtime: WorkerRuntime, timeout: float | None = None) -> None:
+    runtime.request_stop()
+    runtime.join(timeout=timeout)
+
+
+def get_runtime_status(runtime: WorkerRuntime) -> dict[str, object]:
+    return {
+        "pid": runtime.pid,
+        "worker_alive": runtime.worker_alive,
+        "stop_requested": runtime.stop_requested,
+        "uptime_sec": round(max(0.0, time.time() - runtime.started_at), 2),
+    }
+
+
+def count_jobs(repo: JobRepo) -> dict[str, int]:
+    statuses = {}
+    for status in ("QUEUED", "RUNNING"):
+        stmt = select(func.count()).select_from(Job).where(Job.status == status)
+        statuses[status.lower()] = repo.db.execute(stmt).scalar_one()
+    return statuses
+
+
+def get_worker_status(runtime: WorkerRuntime, repo: JobRepo) -> dict[str, object]:
+    return {
+        **get_runtime_status(runtime),
+        **count_jobs(repo),
+    }

@@ -10,6 +10,72 @@ Backend TTS local bằng FastAPI + SQLite + worker thread, tạo MP3 từ text q
 - Xử lý chunk + retry + random delay.
 - Ghép audio, áp gain volume, và xuất ra file MP3.
 - Recover job `RUNNING` về `QUEUED` khi restart.
+- Có control API local-only để đọc trạng thái backend và shutdown graceful.
+- Có prototype tray app Windows để start/stop backend dạng detached.
+
+## Background + tray prototype
+Prototype hiện tại thêm 2 entrypoint mới:
+
+- `python-tts-backend/run_backend.py`: chạy backend bằng uvicorn theo kiểu programmatic.
+- `python-tts-backend/windows_tray.py`: mở icon ở system tray để điều khiển backend local.
+
+Control API mới:
+
+- `GET /v1/control/status`
+- `POST /v1/control/shutdown`
+
+Lưu ý:
+- Đây là **prototype local**, chưa phải Windows Service thật.
+- Control API chỉ intended cho localhost.
+- Khi shutdown giữa lúc đang xử lý job, job sẽ bị đánh `FAILED` với `error.code = BACKEND_SHUTDOWN`.
+- Tray dùng `pystray` + `Pillow`; cần desktop session Windows để hiện icon.
+
+### Chạy backend detached qua tray
+Từ repo root:
+
+```bash
+pip install -r python-tts-backend/requirements.txt
+python python-tts-backend/windows_tray.py
+```
+
+Tray menu hiện có:
+- Start backend
+- Stop backend
+- Open API
+- Open outputs
+- Refresh status
+- Exit tray
+- Exit and stop backend
+
+### Chạy backend trực tiếp không qua tray
+```bash
+python python-tts-backend/run_backend.py
+```
+
+### Control API usage
+```bash
+curl -s "http://127.0.0.1:8000/v1/control/status"
+curl -s -X POST "http://127.0.0.1:8000/v1/control/shutdown"
+```
+
+Nếu muốn khóa shutdown endpoint bằng token, set thêm biến môi trường:
+
+```env
+CONTROL_TOKEN=your-secret-token
+CONTROL_SHUTDOWN_TIMEOUT_SEC=10
+```
+
+Khi dùng token, tray sẽ tự gửi `X-Control-Token` từ config hiện tại.
+
+### Build thành exe sau này
+Prototype này phù hợp để build tiếp bằng `PyInstaller --noconsole` cho:
+- backend runner
+- tray app
+
+Nhưng phần đó chưa được cấu hình sẵn trong repo ở bước hiện tại.
+
+---
+
 
 ## Project structure
 ```text
