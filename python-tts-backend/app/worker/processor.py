@@ -1,4 +1,3 @@
-import os
 import random
 import threading
 
@@ -21,24 +20,26 @@ def process_job(job_id, repo, chunker, adapter, merger, output_path, partial_out
         repo.mark_running(job_id)
         chunks = chunker(job.input_text, max_chars)
         total_chunks = len(chunks)
+        chunk_dir = partial_output_path
         start_index = job.processed_chunks
 
-        if partial_output_path and start_index > 0:
-            if os.path.exists(partial_output_path):
-                merger.load(partial_output_path)
-            else:
-                start_index = 0
-                repo.update_progress(
-                    job_id=job_id,
-                    total_chunks=total_chunks,
-                    processed_chunks=0,
-                    current_chunk_index=0,
-                    current_char_offset=0,
-                    total_chars=len(job.input_text),
-                )
-                job = repo.get_job(job_id)
-                if not job:
-                    return
+        if chunk_dir and start_index > 0 and not merger.has_all_chunks(chunk_dir, start_index):
+            # Nếu metadata progress còn nhưng file chunk tạm đã mất thì phải chạy lại từ đầu để tránh thiếu audio đầu file.
+            start_index = 0
+            repo.update_progress(
+                job_id=job_id,
+                total_chunks=total_chunks,
+                processed_chunks=0,
+                current_chunk_index=0,
+                current_char_offset=0,
+                total_chars=len(job.input_text),
+            )
+            job = repo.get_job(job_id)
+            if not job:
+                return
+
+        if chunk_dir:
+            merger.ensure_chunk_dir(chunk_dir)
 
         for idx, chunk in enumerate(chunks[start_index:], start=start_index + 1):
             _raise_if_stopping(stop_event)
@@ -52,7 +53,10 @@ def process_job(job_id, repo, chunker, adapter, merger, output_path, partial_out
                         reqid=10000 + idx,
                         speed=1.0,
                     )
-                    merger.append_base64_mp3(b64)
+                    if chunk_dir:
+                        merger.export_chunk(b64, merger.chunk_path(chunk_dir, idx))
+                    else:
+                        merger.append_base64_mp3(b64)
                     break
                 except ValueError as exc:
                     last_error = exc
@@ -68,18 +72,19 @@ def process_job(job_id, repo, chunker, adapter, merger, output_path, partial_out
                 current_char_offset=chunk["char_end"],
                 total_chars=len(job.input_text),
             )
-            if partial_output_path:
-                merger.export(partial_output_path)
             delay = random.uniform(settings.random_delay_min_sec, settings.random_delay_max_sec)
             if stop_event and stop_event.wait(delay):
                 raise RuntimeError("backend is shutting down")
 
         _raise_if_stopping(stop_event)
-        duration_ms = merger.export(output_path)
+        if chunk_dir:
+            duration_ms = merger.merge_files(merger.chunk_paths_for_total(chunk_dir, total_chunks), output_path)
+        else:
+            duration_ms = merger.export(output_path)
         repo.mark_success(job_id, output_path=output_path, duration_ms=duration_ms)
-        if partial_output_path and os.path.exists(partial_output_path):
+        if chunk_dir:
             try:
-                os.remove(partial_output_path)
+                merger.cleanup_chunk_dir(chunk_dir)
             except OSError:
                 pass
     except ValueError as exc:

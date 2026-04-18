@@ -31,7 +31,7 @@ Lưu ý:
 - Đây là **prototype local**, chưa phải Windows Service thật.
 - Control API chỉ intended cho localhost.
 - Khi shutdown giữa lúc đang xử lý job, job sẽ bị đánh `FAILED` với `error.code = BACKEND_SHUTDOWN`.
-- Khi job fail sau khi đã synthesize được một phần, backend giữ lại partial file để có thể retry/resume trên chính job đó.
+- Khi job fail sau khi đã synthesize được một phần, backend giữ lại thư mục chunk tạm để có thể retry/resume trên chính job đó.
 - Tray dùng `pystray` + `Pillow`; cần desktop session Windows để hiện icon.
 
 ### Chạy backend detached qua tray
@@ -283,8 +283,9 @@ curl -s -X POST "http://127.0.0.1:8000/v1/jobs/retry/<job_id>"
 Behavior:
 - Chỉ retry được khi job đang ở trạng thái `FAILED`.
 - Retry giữ nguyên `job_id` cũ.
-- Progress đã hoàn thành được giữ lại để worker resume từ phần còn thiếu nếu partial file còn tồn tại.
-- Partial file sẽ bị xóa sau khi job hoàn tất thành công.
+- Progress đã hoàn thành được giữ lại để worker resume từ chunk kế tiếp nếu các file chunk tạm trước đó còn đủ.
+- Nếu metadata progress còn nhưng thiếu chunk tạm, worker sẽ tự reset progress và synth lại từ đầu để tránh thiếu audio đầu file.
+- Thư mục chunk tạm sẽ bị xóa sau khi job hoàn tất thành công.
 
 ### 7) Delete all jobs
 ```bash
