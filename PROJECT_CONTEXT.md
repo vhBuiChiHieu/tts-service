@@ -14,7 +14,7 @@ Mục tiêu chính:
 Thư mục chính: `python-tts-backend/`
 
 Các module chính:
-- `app/main.py`: khởi tạo FastAPI app, lifespan startup/shutdown, init DB, recover job RUNNING, khởi động worker, mount jobs API + control API.
+- `app/main.py`: khởi tạo FastAPI app, lifespan startup/shutdown, init DB, recover job RUNNING, khởi động worker, mount jobs API + control API, đồng thời serve giao diện local đơn giản tại `/app`.
 - `app/api/jobs.py`: API quản lý, tạo, retry và theo dõi job (`POST /v1/jobs`, `POST /v1/jobs/tts-file-txt`, `POST /v1/jobs/sangtacviet`, `POST /v1/jobs/retry/{job_id}`, `GET /v1/jobs`, `GET /v1/jobs/{job_id}`, `DELETE /v1/jobs/all`).
 - `app/api/control.py`: API local-only cho tray/backend control (`/v1/control/status`, `/v1/control/shutdown`).
 - `app/db/`: SQLAlchemy session/model/repository cho bảng jobs.
@@ -23,7 +23,7 @@ Các module chính:
 - `app/worker/`: worker loop và processor xử lý từng job; hiện đã có cooperative shutdown qua `stop_event`.
 - `app/runtime.py`: runtime handle cho worker thread (`thread`, `stop_event`, uptime/pid helper).
 - `run_backend.py`: entrypoint chạy backend theo kiểu programmatic uvicorn.
-- `windows_tray.py`: prototype tray app Windows để start/stop backend detached.
+- `windows_tray.py`: prototype tray app Windows để start/stop backend detached, mở API/docs/outputs và mở giao diện local `Giao diện ứng dụng`.
 - `tests/`: test cho health/api/repo/chunker/google adapter/processor/recovery/control.
 
 Ngoài ra project hiện có thêm prototype chạy nền:
@@ -41,15 +41,24 @@ Các dependency mới cho prototype:
 Các endpoint bổ sung:
 - `GET /v1/control/status`
 - `POST /v1/control/shutdown`
+- `GET /app`
+
+Giao diện local `/app` hiện có:
+- form tối giản gồm chọn file `.txt` và `speed`
+- submit trực tiếp tới `POST /v1/jobs/tts-file-txt`
+- polling `GET /v1/jobs/{job_id}` mỗi giây để theo dõi đúng job vừa tạo
+- thanh tiến độ đổi màu theo trạng thái: xanh lá khi `RUNNING`, xanh dương khi `SUCCEEDED`, đỏ khi `FAILED`
 
 Luồng chạy prototype mới:
 1. User có thể chạy `python python-tts-backend/run_backend.py` để start backend trực tiếp.
 2. Hoặc chạy `python python-tts-backend/windows_tray.py` để mở icon tray.
 3. Tray sẽ start backend dạng detached bằng subprocess nếu backend chưa chạy.
 4. Tray gọi `GET /v1/control/status` để hiển thị trạng thái.
-5. Khi user chọn stop, tray gọi `POST /v1/control/shutdown` để backend dừng graceful.
-6. Worker dừng cooperative thay vì bị cắt đột ngột.
-7. Nếu đang xử lý giữa chừng lúc shutdown, job bị đánh FAILED với mã `BACKEND_SHUTDOWN`.
+5. Khi user chọn `Giao diện ứng dụng`, tray mở `GET /app` trên backend local.
+6. Giao diện local cho phép chọn file `.txt`, nhập `speed`, submit job và theo dõi tiến độ realtime cho đúng job vừa tạo.
+7. Khi user chọn stop, tray gọi `POST /v1/control/shutdown` để backend dừng graceful.
+8. Worker dừng cooperative thay vì bị cắt đột ngột.
+9. Nếu đang xử lý giữa chừng lúc shutdown, job bị đánh FAILED với mã `BACKEND_SHUTDOWN`.
 
 Smoke test đã xác nhận:
 - `GET /v1/control/status` trả đúng runtime snapshot.

@@ -14,6 +14,7 @@ Backend TTS local bằng FastAPI + SQLite + worker thread, tạo MP3 từ text q
 - Recover job `RUNNING` về `QUEUED` khi restart.
 - Có control API local-only để đọc trạng thái backend và shutdown graceful.
 - Có prototype tray app Windows để start/stop backend dạng detached.
+- Có giao diện local tối giản tại `/app` để upload `.txt`, nhập `speed`, submit job và theo dõi realtime đúng job vừa tạo.
 
 ## Background + tray prototype
 Prototype hiện tại thêm 2 entrypoint mới:
@@ -45,11 +46,21 @@ Tray menu hiện có:
 - Start backend
 - Stop backend
 - Open API
+- Giao diện ứng dụng
 - Open Swagger Docs
 - Open outputs
 - Refresh status
 - Exit tray
 - Exit and stop backend
+
+Nếu chọn `Giao diện ứng dụng`, tray sẽ mở `http://127.0.0.1:8000/app` để:
+- chọn file `.txt`
+- nhập `speed`
+- submit tới `POST /v1/jobs/tts-file-txt`
+- polling `GET /v1/jobs/{job_id}` mỗi giây cho đúng job vừa tạo
+- hiển thị thanh tiến độ với màu trạng thái: xanh lá khi `RUNNING`, xanh dương khi `SUCCEEDED`, đỏ khi `FAILED`
+
+Nếu backend chưa chạy, mục này sẽ giống `Open API` và `Open Swagger Docs`: không mở URL chết mà sẽ báo trạng thái và mở `python-tts-backend/backend.log` nếu có.
 
 Swagger/OpenAPI docs mặc định có tại:
 - `http://127.0.0.1:8000/docs`
