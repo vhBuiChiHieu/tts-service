@@ -15,11 +15,11 @@ Thư mục chính: `python-tts-backend/`
 
 Các module chính:
 - `app/main.py`: khởi tạo FastAPI app, lifespan startup/shutdown, init DB, recover job RUNNING, khởi động worker, mount jobs API + control API.
-- `app/api/jobs.py`: API quản lý, tạo và theo dõi job (`POST /v1/jobs`, `POST /v1/jobs/tts-file-txt`, `POST /v1/jobs/sangtacviet`, `GET /v1/jobs`, `GET /v1/jobs/{job_id}`, `DELETE /v1/jobs/all`).
+- `app/api/jobs.py`: API quản lý, tạo, retry và theo dõi job (`POST /v1/jobs`, `POST /v1/jobs/tts-file-txt`, `POST /v1/jobs/sangtacviet`, `POST /v1/jobs/retry/{job_id}`, `GET /v1/jobs`, `GET /v1/jobs/{job_id}`, `DELETE /v1/jobs/all`).
 - `app/api/control.py`: API local-only cho tray/backend control (`/v1/control/status`, `/v1/control/shutdown`).
 - `app/db/`: SQLAlchemy session/model/repository cho bảng jobs.
 - `app/tts/`: token manager, Google adapter, chunker.
-- `app/audio/merger.py`: decode base64 MP3, áp `volume_gain_db`, áp speed hậu kỳ toàn file (`atempo`), rồi export file.
+- `app/audio/merger.py`: decode base64 MP3, áp `volume_gain_db`, có thể load partial MP3 để resume, áp speed hậu kỳ toàn file (`atempo`), rồi export file.
 - `app/worker/`: worker loop và processor xử lý từng job; hiện đã có cooperative shutdown qua `stop_event`.
 - `app/runtime.py`: runtime handle cho worker thread (`thread`, `stop_event`, uptime/pid helper).
 - `run_backend.py`: entrypoint chạy backend theo kiểu programmatic uvicorn.
@@ -77,10 +77,12 @@ Tổng số test targeted đã verify trong lần cập nhật này: 25 pass.
 6. Processor tách text thành chunks (có offset), gọi provider TTS cho từng chunk với `speed=1.0` để ổn định provider response.
 7. Sau mỗi chunk, cập nhật progress (`processed_chunks`, `progress_pct`, vị trí char).
 8. Merger áp `volume_gain_db` lên từng chunk audio trước khi ghép.
-9. Khi export, Merger áp speed hậu kỳ trên toàn file bằng ffmpeg `atempo` theo `job.speed`; tên file là `outputs/{output_prefix}-{job_id}.mp3` nếu có prefix, ngược lại `outputs/{job_id}.mp3`.
-10. Google adapter vẫn giữ fallback an toàn về `speed=1.0` và log raw response khi parse fail.
-11. Thành công: `SUCCEEDED` + thông tin file/duration.
-12. Thất bại: `FAILED` + `error_code`/`error_message`.
+9. Sau mỗi chunk thành công, processor cập nhật progress và flush partial file để có thể resume nếu job fail giữa chừng.
+10. Khi retry `POST /v1/jobs/retry/{job_id}`, job `FAILED` được đưa lại về `QUEUED` trên chính `job_id`, giữ nguyên progress đã hoàn tất để worker resume từ phần còn thiếu nếu partial file còn tồn tại.
+11. Khi export final, Merger áp speed hậu kỳ trên toàn file bằng ffmpeg `atempo` theo `job.speed`; tên file là `outputs/{output_prefix}-{job_id}.mp3` nếu có prefix, ngược lại `outputs/{job_id}.mp3`.
+12. Google adapter vẫn giữ fallback an toàn về `speed=1.0` và log raw response khi parse fail.
+13. Thành công: `SUCCEEDED` + thông tin file/duration`, đồng thời xóa partial file.
+14. Thất bại: `FAILED` + `error_code`/`error_message`.
 
 ## 4. Dữ liệu job tracking
 Thông tin tracking gồm:

@@ -24,6 +24,74 @@ def test_get_job_not_found():
     assert response.status_code == 404
 
 
+def test_get_job_returns_tracking_payload():
+    from app.db.repo_jobs import JobRepo
+    from app.db.session import SessionLocal
+
+    init_db()
+    with SessionLocal() as db:
+        repo = JobRepo(db)
+        job = repo.create_job(
+            input_text="xin chao",
+            lang="vi",
+            voice_hint=None,
+            speed=1.0,
+            volume_gain_db=0.0,
+        )
+
+    client = TestClient(app)
+    response = client.get(f"/v1/jobs/{job.job_id}")
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["job_id"] == job.job_id
+    assert body["status"] == "QUEUED"
+    assert body["progress"]["processed_chunks"] == 0
+
+
+def test_post_jobs_retry_requeues_failed_job():
+    from app.db.repo_jobs import JobRepo
+    from app.db.session import SessionLocal
+
+    init_db()
+    with SessionLocal() as db:
+        repo = JobRepo(db)
+        job = repo.create_job(
+            input_text="xin chao",
+            lang="vi",
+            voice_hint=None,
+            speed=1.0,
+            volume_gain_db=0.0,
+        )
+        repo.update_progress(
+            job_id=job.job_id,
+            total_chunks=3,
+            processed_chunks=1,
+            current_chunk_index=1,
+            current_char_offset=3,
+            total_chars=len(job.input_text),
+        )
+        repo.mark_failed(job.job_id, "UNEXPECTED_ERROR", "partial exists")
+
+    client = TestClient(app)
+    response = client.post(f"/v1/jobs/retry/{job.job_id}")
+
+    assert response.status_code == 202
+    body = response.json()
+    assert body["job_id"] == job.job_id
+    assert body["status"] == "QUEUED"
+
+    with SessionLocal() as db:
+        repo = JobRepo(db)
+        saved = repo.get_job(job.job_id)
+
+    assert saved.status == "QUEUED"
+    assert saved.processed_chunks == 1
+    assert saved.error_code is None
+    assert saved.error_message is None
+    assert saved.finished_at is None
+
+
 def test_post_jobs_rejects_empty_text():
     init_db()
     client = TestClient(app)

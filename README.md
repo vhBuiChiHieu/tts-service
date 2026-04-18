@@ -5,7 +5,7 @@ Backend TTS local bằng FastAPI + SQLite + worker thread, tạo MP3 từ text q
 ## Features
 - Tạo job TTS qua API (`/v1/jobs`).
 - Tạo job trực tiếp bằng cách upload file text (`/v1/jobs/tts-file-txt`).
-- Quản lý danh sách job phân trang và xóa toàn bộ dữ liệu (`GET /v1/jobs`, `DELETE /v1/jobs/all`).
+- Quản lý danh sách job phân trang, retry job lỗi cùng job ID, và xóa toàn bộ dữ liệu (`GET /v1/jobs`, `POST /v1/jobs/retry/{job_id}`, `DELETE /v1/jobs/all`).
 - Tạo job từ payload chapter Sáng Tác Việt (`/v1/jobs/sangtacviet`).
 - Hỗ trợ per-job `speed` và `volume_gain_db` với default an toàn.
 - Theo dõi tiến độ xử lý job theo thời gian thực.
@@ -30,6 +30,7 @@ Lưu ý:
 - Đây là **prototype local**, chưa phải Windows Service thật.
 - Control API chỉ intended cho localhost.
 - Khi shutdown giữa lúc đang xử lý job, job sẽ bị đánh `FAILED` với `error.code = BACKEND_SHUTDOWN`.
+- Khi job fail sau khi đã synthesize được một phần, backend giữ lại partial file để có thể retry/resume trên chính job đó.
 - Tray dùng `pystray` + `Pillow`; cần desktop session Windows để hiện icon.
 
 ### Chạy backend detached qua tray
@@ -263,12 +264,23 @@ curl -s -X POST "http://127.0.0.1:8000/v1/jobs/tts-file-txt" \
 curl -s "http://127.0.0.1:8000/v1/jobs?page=1&size=20"
 ```
 
-### 6) Delete all jobs
+### 6) Retry failed job
+```bash
+curl -s -X POST "http://127.0.0.1:8000/v1/jobs/retry/<job_id>"
+```
+
+Behavior:
+- Chỉ retry được khi job đang ở trạng thái `FAILED`.
+- Retry giữ nguyên `job_id` cũ.
+- Progress đã hoàn thành được giữ lại để worker resume từ phần còn thiếu nếu partial file còn tồn tại.
+- Partial file sẽ bị xóa sau khi job hoàn tất thành công.
+
+### 7) Delete all jobs
 ```bash
 curl -s -X DELETE "http://127.0.0.1:8000/v1/jobs/all"
 ```
 
-### 7) Track job
+### 8) Track job
 ```bash
 curl -s "http://127.0.0.1:8000/v1/jobs/<job_id>"
 ```

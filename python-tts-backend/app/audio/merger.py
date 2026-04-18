@@ -42,6 +42,9 @@ class AudioMerger:
         self.volume_gain_db = volume_gain_db
         self.speed = speed
 
+    def load(self, input_path: str) -> None:
+        self.buffer = AudioSegment.from_file(input_path, format="mp3")
+
     def append_base64_mp3(self, b64: str) -> None:
         raw = base64.b64decode(b64)
         seg = AudioSegment.from_file(BytesIO(raw), format="mp3")

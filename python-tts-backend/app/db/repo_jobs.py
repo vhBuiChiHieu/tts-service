@@ -115,6 +115,19 @@ class JobRepo:
         job.updated_at = now_iso()
         self.db.commit()
 
+    def retry_failed_job(self, job_id: str) -> Job | None:
+        job = self.get_job(job_id)
+        if not job or job.status != "FAILED":
+            return None
+        job.status = "QUEUED"
+        job.error_code = None
+        job.error_message = None
+        job.finished_at = None
+        job.updated_at = now_iso()
+        self.db.commit()
+        self.db.refresh(job)
+        return job
+
     def requeue_running_jobs(self) -> None:
         stmt = select(Job).where(Job.status == "RUNNING")
         rows = self.db.execute(stmt).scalars().all()

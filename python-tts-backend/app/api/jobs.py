@@ -139,6 +139,25 @@ def create_job_sangtacviet(
     return CreateJobResponse(job_id=job.job_id, status=job.status, created_at=job.created_at)
 
 
+@router.post(
+    "/retry/{job_id}",
+    response_model=CreateJobResponse,
+    status_code=202,
+    summary="Retry a failed TTS job",
+    description="Requeue a failed job on the same job ID so the worker can resume from its persisted partial audio.",
+    operation_id="retry_job",
+)
+def retry_job(
+    job_id: str = Path(..., description=JOB_ID_DESCRIPTION, examples=[JOB_ID_EXAMPLE]),
+    db: Session = Depends(get_db),
+):
+    repo = JobRepo(db)
+    job = repo.retry_failed_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="failed job not found")
+    return CreateJobResponse(job_id=job.job_id, status=job.status, created_at=job.created_at)
+
+
 @router.get(
     "/{job_id}",
     response_model=JobTrackingResponse,
@@ -160,7 +179,7 @@ def get_job(
         job_id=job.job_id,
         status=job.status,
         progress=JobProgressResponse(
-            total_chunks=job.total_chunks,
+            total_chunks=job.total_chunks or 0,
             processed_chunks=job.processed_chunks,
             progress_pct=job.progress_pct,
             position=JobPositionResponse(
@@ -208,7 +227,7 @@ def list_jobs(
             job_id=job.job_id,
             status=job.status,
             progress=JobProgressResponse(
-                total_chunks=job.total_chunks,
+                total_chunks=job.total_chunks or 0,
                 processed_chunks=job.processed_chunks,
                 progress_pct=job.progress_pct,
                 position=JobPositionResponse(

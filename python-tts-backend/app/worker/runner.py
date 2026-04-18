@@ -25,6 +25,10 @@ def build_output_path(output_dir: str, job_id: str, output_prefix: str | None) -
     return f"{output_dir}/{file_name}"
 
 
+def build_partial_output_path(output_dir: str, job_id: str, output_prefix: str | None) -> str:
+    return f"{build_output_path(output_dir, job_id, output_prefix)}.partial"
+
+
 def start_worker() -> WorkerRuntime:
     stop_event = threading.Event()
 
@@ -48,6 +52,7 @@ def start_worker() -> WorkerRuntime:
                         speed=job.speed,
                     )
                     output_path = build_output_path(settings.output_dir, job.job_id, job.output_prefix)
+                    partial_output_path = build_partial_output_path(settings.output_dir, job.job_id, job.output_prefix)
                     process_job(
                         job_id=job.job_id,
                         repo=repo,
@@ -55,6 +60,7 @@ def start_worker() -> WorkerRuntime:
                         adapter=adapter,
                         merger=merger,
                         output_path=output_path,
+                        partial_output_path=partial_output_path,
                         max_chars=settings.max_chars_per_chunk,
                         stop_event=stop_event,
                     )
