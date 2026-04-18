@@ -85,3 +85,4 @@ docs/superpowers/*/*.md
 .gitnexus
 CLAUDE.md
 AGENTS.md
+.playwright-mcp/
