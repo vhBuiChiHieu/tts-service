@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Body, Depends, HTTPException, Path
+from fastapi import APIRouter, Body, Depends, File, HTTPException, Path, Query, UploadFile
 from sqlalchemy.orm import Session
 
 from app.core.schemas import (
@@ -61,6 +61,42 @@ def create_job(
         voice_hint=payload.voice_hint,
         speed=payload.speed,
         volume_gain_db=payload.volume_gain_db,
+    )
+    return CreateJobResponse(job_id=job.job_id, status=job.status, created_at=job.created_at)
+
+
+@router.post(
+    "/tts-file-txt",
+    response_model=CreateJobResponse,
+    status_code=202,
+    summary="Create a TTS job from a TXT file",
+    description="Queue a text-to-speech job by uploading a .txt file.",
+    operation_id="create_tts_job_from_file",
+)
+def create_job_file_txt(
+    file: UploadFile = File(...),
+    speed: float = Query(1.0, ge=0.5, le=2.0, description="Playback speed applied during final audio export."),
+    db: Session = Depends(get_db),
+):
+    if not file.filename.endswith(".txt"):
+        raise HTTPException(status_code=400, detail="Only .txt files are allowed")
+    
+    try:
+        text = file.file.read().decode("utf-8")
+    except UnicodeDecodeError:
+        raise HTTPException(status_code=400, detail="File must be utf-8 encoded")
+    
+    if not text.strip():
+        raise HTTPException(status_code=422, detail="The provided txt file is empty")
+
+    repo = JobRepo(db)
+    job = repo.create_job(
+        input_text=text,
+        lang="vi",
+        voice_hint=None,
+        speed=speed,
+        volume_gain_db=0.0,
+        output_prefix=file.filename[:-4],
     )
     return CreateJobResponse(job_id=job.job_id, status=job.status, created_at=job.created_at)
 
