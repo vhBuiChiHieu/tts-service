@@ -25,6 +25,8 @@ from app.core.schemas import (
     JobProgressResponse,
     JobResultResponse,
     JobTrackingResponse,
+    JobListResponse,
+    DeleteAllJobsResponse,
     SangTacVietCreateJobRequest,
 )
 from app.db.repo_jobs import JobRepo
@@ -182,3 +184,76 @@ def get_job(
         updated_at=job.updated_at,
         finished_at=job.finished_at,
     )
+
+
+@router.get(
+    "",
+    response_model=JobListResponse,
+    summary="List all jobs",
+    description="Get a paginated list of all TTS jobs ordered by creation time descending.",
+    operation_id="list_jobs",
+)
+def list_jobs(
+    page: int = Query(1, ge=1, description="Page number"),
+    size: int = Query(20, ge=1, le=100, description="Number of items per page"),
+    db: Session = Depends(get_db),
+):
+    repo = JobRepo(db)
+    skip = (page - 1) * size
+    jobs, total = repo.get_jobs(skip=skip, limit=size)
+    pages = (total + size - 1) // size
+
+    items = [
+        JobTrackingResponse(
+            job_id=job.job_id,
+            status=job.status,
+            progress=JobProgressResponse(
+                total_chunks=job.total_chunks,
+                processed_chunks=job.processed_chunks,
+                progress_pct=job.progress_pct,
+                position=JobPositionResponse(
+                    current_chunk_index=job.current_chunk_index,
+                    current_char_offset=job.current_char_offset,
+                    total_chars=job.total_chars,
+                ),
+            ),
+            result=JobResultResponse(
+                file_name=job.result_file_name,
+                file_path=job.result_file_path,
+                duration_ms=job.result_duration_ms,
+            ),
+            error=(
+                JobErrorResponse(code=job.error_code, message=job.error_message)
+                if job.error_code or job.error_message
+                else None
+            ),
+            created_at=job.created_at,
+            started_at=job.started_at,
+            updated_at=job.updated_at,
+            finished_at=job.finished_at,
+        )
+        for job in jobs
+    ]
+
+    return JobListResponse(
+        items=items,
+        total=total,
+        page=page,
+        size=size,
+        pages=pages
+    )
+
+
+@router.delete(
+    "/all",
+    response_model=DeleteAllJobsResponse,
+    summary="Delete all jobs",
+    description="Clear all job data from the database.",
+    operation_id="delete_all_jobs",
+)
+def delete_all_jobs(
+    db: Session = Depends(get_db),
+):
+    repo = JobRepo(db)
+    deleted_count = repo.delete_all_jobs()
+    return DeleteAllJobsResponse(deleted_count=deleted_count)

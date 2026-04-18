@@ -158,6 +158,18 @@ class JobTrackingResponse(BaseModel):
     }
 
 
+class JobListResponse(BaseModel):
+    items: list[JobTrackingResponse] = Field(description="List of jobs for the current page.")
+    total: int = Field(description="Total number of jobs in the database.")
+    page: int = Field(description="Current page number.")
+    size: int = Field(description="Number of items per page.")
+    pages: int = Field(description="Total number of pages.")
+
+
+class DeleteAllJobsResponse(BaseModel):
+    deleted_count: int = Field(description="Number of jobs deleted.")
+
+
 class ControlStatusResponse(BaseModel):
     pid: int | None = Field(description="Backend process ID.")
     worker_alive: bool = Field(description="Whether the background worker thread is alive.")

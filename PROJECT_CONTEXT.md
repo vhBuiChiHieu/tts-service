@@ -15,7 +15,7 @@ Thư mục chính: `python-tts-backend/`
 
 Các module chính:
 - `app/main.py`: khởi tạo FastAPI app, lifespan startup/shutdown, init DB, recover job RUNNING, khởi động worker, mount jobs API + control API.
-- `app/api/jobs.py`: API tạo job và theo dõi job (`/v1/jobs`, `/v1/jobs/sangtacviet`, `/v1/jobs/{job_id}`).
+- `app/api/jobs.py`: API quản lý, tạo và theo dõi job (`POST /v1/jobs`, `POST /v1/jobs/tts-file-txt`, `POST /v1/jobs/sangtacviet`, `GET /v1/jobs`, `GET /v1/jobs/{job_id}`, `DELETE /v1/jobs/all`).
 - `app/api/control.py`: API local-only cho tray/backend control (`/v1/control/status`, `/v1/control/shutdown`).
 - `app/db/`: SQLAlchemy session/model/repository cho bảng jobs.
 - `app/tts/`: token manager, Google adapter, chunker.
@@ -69,7 +69,7 @@ Tổng số test targeted đã verify trong lần cập nhật này: 25 pass.
 
 
 ## 3. Luồng xử lý end-to-end
-1. Client gọi `POST /v1/jobs` với `text`, `lang`, `voice_hint`, `metadata`, `speed`, `volume_gain_db` **hoặc** gọi `POST /v1/jobs/sangtacviet` với `book_id`, `range`, `chapters[]`.
+1. Client gọi `POST /v1/jobs` với `text`... **hoặc** gọi `POST /v1/jobs/sangtacviet` với chapter list **hoặc** gọi `POST /v1/jobs/tts-file-txt` duyệt file txt lên thẳng.
 2. API validate request: `speed` (0.5-2.0), `volume_gain_db` (-20.0 đến 20.0); với endpoint Sáng Tác Việt kiểm tra thêm `range.start <= range.end`, `chapters` không rỗng, chapter text không rỗng.
 3. Với endpoint Sáng Tác Việt: gom toàn bộ `chapters[].text` bằng 1 dấu cách và tạo `output_prefix={book_id}-{start}-{end}`.
 4. API tạo bản ghi job `QUEUED` trong SQLite (persist thêm `output_prefix` nếu có).
@@ -117,7 +117,9 @@ Giá trị mặc định hiện tại (chạy từ repo root):
 - Đã fix parser token cho trường hợp Google không trả key `SNlM0e`.
 - End-to-end đã tạo thành công file MP3 (khi có ffmpeg/ffprobe).
 - Đã thêm endpoint `POST /v1/jobs/sangtacviet` cho payload chapter list (gom text bằng dấu cách).
-- Đã hỗ trợ `output_prefix` theo dạng `{book_id}-{start}-{end}` để đặt tên output file.
+- Đã thêm endpoint `POST /v1/jobs/tts-file-txt` hỗ trợ tạo job bằng upload `.txt` trực tiếp.
+- Bổ sung APIs quản lý danh sách: `GET /v1/jobs` (phân trang) và `DELETE /v1/jobs/all` (xóa toàn bộ).
+- Đã hỗ trợ `output_prefix` theo dạng `{book_id}-{start}-{end}` hoặc `{filename}` để đặt tên output file.
 - DB jobs đã có thêm cột nullable `output_prefix` và có bước tự thêm cột khi init DB với SQLite cũ.
 - Test suite hiện có: 35 pass, 1 skipped.
 

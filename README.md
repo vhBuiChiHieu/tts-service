@@ -4,6 +4,8 @@ Backend TTS local bằng FastAPI + SQLite + worker thread, tạo MP3 từ text q
 
 ## Features
 - Tạo job TTS qua API (`/v1/jobs`).
+- Tạo job trực tiếp bằng cách upload file text (`/v1/jobs/tts-file-txt`).
+- Quản lý danh sách job phân trang và xóa toàn bộ dữ liệu (`GET /v1/jobs`, `DELETE /v1/jobs/all`).
 - Tạo job từ payload chapter Sáng Tác Việt (`/v1/jobs/sangtacviet`).
 - Hỗ trợ per-job `speed` và `volume_gain_db` với default an toàn.
 - Theo dõi tiến độ xử lý job theo thời gian thực.
@@ -247,7 +249,26 @@ Behavior:
 - Hệ thống gom toàn bộ `chapters[].text` bằng **1 dấu cách** rồi enqueue như job thường.
 - Tên file output sẽ có prefix: `{book_id}-{start}-{end}-{job_id}.mp3`.
 
-### 4) Track job
+### 4) Create TTS job từ upload file TXT
+```bash
+curl -s -X POST "http://127.0.0.1:8000/v1/jobs/tts-file-txt" \
+  -F "file=@your-file.txt" \
+  -F "speed=1.0"
+```
+
+Đầu ra file mp3 được tạo ra sẽ có format là `{tên file}-{UUID}.mp3`.
+
+### 5) List all jobs (Pagination)
+```bash
+curl -s "http://127.0.0.1:8000/v1/jobs?page=1&size=20"
+```
+
+### 6) Delete all jobs
+```bash
+curl -s -X DELETE "http://127.0.0.1:8000/v1/jobs/all"
+```
+
+### 7) Track job
 ```bash
 curl -s "http://127.0.0.1:8000/v1/jobs/<job_id>"
 ```

@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 from sqlalchemy.orm import Session
 
 from app.db.models import Job
@@ -41,6 +41,19 @@ class JobRepo:
 
     def get_job(self, job_id: str) -> Job | None:
         return self.db.get(Job, job_id)
+
+    def get_jobs(self, skip: int, limit: int) -> tuple[list[Job], int]:
+        stmt = select(Job).order_by(Job.created_at.desc()).offset(skip).limit(limit)
+        jobs = self.db.execute(stmt).scalars().all()
+        count_stmt = select(func.count(Job.job_id))
+        total = self.db.execute(count_stmt).scalar_one()
+        return list(jobs), total
+
+    def delete_all_jobs(self) -> int:
+        stmt = delete(Job)
+        result = self.db.execute(stmt)
+        self.db.commit()
+        return result.rowcount
 
     def get_next_queued_job(self) -> Job | None:
         stmt = select(Job).where(Job.status == "QUEUED").order_by(Job.created_at.asc()).limit(1)
