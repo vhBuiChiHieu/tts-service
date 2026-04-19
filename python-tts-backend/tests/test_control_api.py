@@ -38,18 +38,54 @@ def test_app_ui_page_is_served():
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
     assert "Local TTS Service" in response.text
-    assert "/v1/jobs/tts-file-txt" in response.text
-    assert "/v1/jobs/" in response.text
-    assert "progress-state-running" in response.text
-    assert "progress-state-succeeded" in response.text
-    assert "progress-state-failed" in response.text
-    assert "progress-state-cancelled" in response.text
-    assert "job.status === 'RUNNING'" in response.text
-    assert "job.status === 'FAILED'" in response.text
-    assert "job.status === 'SUCCEEDED'" in response.text
-    assert "job.status === 'CANCELLED'" in response.text
-    assert "cancel-btn" in response.text
-    assert "Hủy job" in response.text
+    assert "/app-static/app.css" in response.text
+    assert "/app-static/app.js" in response.text
+    assert "Tạo job" in response.text
+    assert "Danh sách job" in response.text
+    assert "tracking-drawer" in response.text
+    assert "page-size" in response.text
+    assert "prev-page" in response.text
+    assert "next-page" in response.text
+    assert "Mở file output" in response.text
+
+
+def test_app_ui_script_contains_tabs_and_pagination_logic():
+    with TestClient(app) as client:
+        response = client.get("/app-static/app.js")
+
+    assert response.status_code == 200
+    assert "activateTab" in response.text
+    assert "updatePaginationControls" in response.text
+    assert "pageSizeSelect" in response.text
+    assert "prevPageButton" in response.text
+    assert "nextPageButton" in response.text
+    assert "trackingDrawer" in response.text
+
+
+def test_app_ui_styles_contain_tabs_and_drawer_layout():
+    with TestClient(app) as client:
+        response = client.get("/app-static/app.css")
+
+    assert response.status_code == 200
+    assert ".tabs" in response.text
+    assert ".tab-button" in response.text
+    assert ".jobs-layout" in response.text
+    assert ".tracking-drawer" in response.text
+    assert ".pagination-bar" in response.text
+
+
+def test_app_static_assets_are_served():
+    with TestClient(app) as client:
+        css_response = client.get("/app-static/app.css")
+        js_response = client.get("/app-static/app.js")
+
+    assert css_response.status_code == 200
+    assert "text/css" in css_response.headers["content-type"]
+    assert ".jobs-list" in css_response.text
+    assert js_response.status_code == 200
+    assert "javascript" in js_response.headers["content-type"]
+    assert "loadJobs" in js_response.text
+    assert "statusFilter" in js_response.text
 
 
 def test_tray_menu_contains_application_ui_item(monkeypatch):

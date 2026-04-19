@@ -15,7 +15,7 @@ Backend TTS local bằng FastAPI + SQLite + worker thread, tạo MP3 từ text q
 - Ghi nhận ý định hủy và Recover job chạy lỗi/hủy dở dang về trạng thái `QUEUED` hoặc `CANCELLED` khi restart backend.
 - Có control API local-only để đọc trạng thái backend và shutdown graceful.
 - Có prototype tray app Windows để start/stop backend dạng detached.
-- Có giao diện local tối giản tại `/app` để upload `.txt`, nhập `speed`, submit job và theo dõi realtime đúng job vừa tạo.
+- Có giao diện local tại `/app` với 2 tab: tạo job và danh sách job; hỗ trợ filter, phân trang server-side, drawer chi tiết, retry/cancel và mở file output.
 
 ## Background + tray prototype
 Prototype hiện tại thêm 2 entrypoint mới:
@@ -55,11 +55,13 @@ Tray menu hiện có:
 - Exit and stop backend
 
 Nếu chọn `Giao diện ứng dụng`, tray sẽ mở `http://127.0.0.1:8000/app` để:
-- chọn file `.txt`
-- nhập `speed`
+- dùng tab `Tạo job` cho upload `.txt` và nhập `speed`
 - submit tới `POST /v1/jobs/tts-file-txt`
-- polling `GET /v1/jobs/{job_id}` mỗi giây cho đúng job vừa tạo
-- hiển thị thanh tiến độ với màu trạng thái: xanh lá khi `RUNNING`, xanh dương khi `SUCCEEDED`, đỏ khi `FAILED`, xám khi `CANCELLED`. Cho phép Hủy job thuận tiện qua nút trực quan.
+- tự chuyển sang tab `Danh sách job` sau khi tạo
+- xem danh sách job với filter trạng thái và phân trang server-side
+- mở drawer chi tiết cho job đang chọn
+- polling `GET /v1/jobs/{job_id}` mỗi giây cho job đang theo dõi
+- retry, hủy job, và mở file output ngay trên UI
 
 Nếu backend chưa chạy, mục này sẽ giống `Open API` và `Open Swagger Docs`: không mở URL chết mà sẽ báo trạng thái và mở `python-tts-backend/backend.log` nếu có.
 
@@ -108,6 +110,7 @@ python-tts-backend/
     core/{config.py,schemas.py,errors.py}
     db/{session.py,models.py,repo_jobs.py}
     tts/{token_manager.py,google_adapter.py,chunker.py}
+    ui/{router.py,templates/app.html,static/{app.css,app.js}}
     worker/{runner.py,processor.py}
     main.py
   tests/

@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Local TTS Studio</title>
+  <link rel="stylesheet" href="/app-static/app.css">
+</head>
+<body>
+  <main class="shell">
+    <section class="hero">
+      <span class="eyebrow">Local TTS Service</span>
+      <h1>Tạo file MP3 từ TXT và quản lý job ngay trên local backend.</h1>
+      <p>Giao diện được tách rõ thành tab tạo job và tab danh sách job để theo dõi, phân trang và thao tác thuận tiện hơn.</p>
+      <div class="hero-stats">
+        <div class="stat">
+          <strong>Input</strong>
+          <span>TXT upload trực tiếp</span>
+        </div>
+        <div class="stat">
+          <strong>Processing</strong>
+          <span>Job queue bất đồng bộ</span>
+        </div>
+        <div class="stat">
+          <strong>Output</strong>
+          <span>Quản lý trạng thái và file MP3</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="tabs-panel panel">
+      <div class="tabs" role="tablist" aria-label="Điều hướng ứng dụng">
+        <button id="tab-create" class="tab-button is-active" type="button" role="tab" aria-selected="true" aria-controls="panel-create" data-tab="create">Tạo job</button>
+        <button id="tab-jobs" class="tab-button" type="button" role="tab" aria-selected="false" aria-controls="panel-jobs" data-tab="jobs">Danh sách job</button>
+      </div>
+
+      <section id="panel-create" class="tab-panel" role="tabpanel" aria-labelledby="tab-create" data-panel="create">
+        <div class="panel-header">
+          <div>
+            <h2>Tạo job TTS</h2>
+            <p>Upload TXT và tạo job mới. Sau khi tạo xong, giao diện sẽ tự chuyển sang tab danh sách để bạn theo dõi job vừa tạo.</p>
+          </div>
+          <span class="badge status-queued">Sẵn sàng</span>
+        </div>
+
+        <form id="tts-form">
+          <label class="field">
+            <span class="field-label">
+              <span>File TXT</span>
+              <span class="field-hint">Chấp nhận .txt hoặc text/plain</span>
+            </span>
+            <input id="file" name="file" type="file" accept=".txt,text/plain" required>
+          </label>
+
+          <label class="field">
+            <span class="field-label">
+              <span>Speed</span>
+              <span class="field-hint">Khoảng hợp lệ 0.5 đến 2.0</span>
+            </span>
+            <input id="speed" name="speed" type="number" min="0.5" max="2" step="0.1" value="1.0" required>
+          </label>
+
+          <div class="actions">
+            <button id="submit" type="submit">Tạo job</button>
+            <span class="helper">Sau khi tạo, giao diện sẽ refresh danh sách và polling job đang được chọn.</span>
+          </div>
+        </form>
+      </section>
+
+      <section id="panel-jobs" class="tab-panel hidden" role="tabpanel" aria-labelledby="tab-jobs" data-panel="jobs">
+        <div class="jobs-layout">
+          <div class="jobs-main panel panel-subtle">
+            <div class="panel-header jobs-header">
+              <div>
+                <h2>Danh sách job</h2>
+                <p>Lọc, phân trang và chọn job để mở chi tiết ở panel bên phải.</p>
+              </div>
+              <div class="toolbar">
+                <label class="field compact-field">
+                  <span class="field-label">Trạng thái</span>
+                  <select id="status-filter">
+                    <option value="ALL">Tất cả</option>
+                    <option value="QUEUED">QUEUED</option>
+                    <option value="RUNNING">RUNNING</option>
+                    <option value="SUCCEEDED">SUCCEEDED</option>
+                    <option value="FAILED">FAILED</option>
+                    <option value="CANCELLED">CANCELLED</option>
+                  </select>
+                </label>
+                <label class="field compact-field">
+                  <span class="field-label">Mỗi trang</span>
+                  <select id="page-size">
+                    <option value="10">10</option>
+                    <option value="20" selected>20</option>
+                    <option value="50">50</option>
+                  </select>
+                </label>
+                <button id="refresh-jobs" class="secondary-btn" type="button">Refresh</button>
+              </div>
+            </div>
+
+            <div class="list-summary-row">
+              <div id="jobs-summary" class="helper">Đang tải danh sách job...</div>
+              <div id="pagination-summary" class="helper">Trang -/-</div>
+            </div>
+            <div id="jobs-empty" class="empty-state hidden">Chưa có job nào phù hợp bộ lọc hiện tại.</div>
+            <div id="jobs-list" class="jobs-list"></div>
+
+            <div class="pagination-bar">
+              <button id="prev-page" class="secondary-btn" type="button">Previous</button>
+              <span id="page-indicator" class="helper">Trang 1 / 1</span>
+              <button id="next-page" class="secondary-btn" type="button">Next</button>
+            </div>
+          </div>
+
+          <aside id="tracking-drawer" class="tracking-drawer panel panel-subtle hidden">
+            <div class="panel-header">
+              <div>
+                <h2>Chi tiết job</h2>
+                <p>Thông tin chi tiết của job đang chọn trong danh sách.</p>
+              </div>
+              <span id="status-badge" class="badge status-queued">QUEUED</span>
+            </div>
+
+            <div class="tracking-grid">
+              <div class="meta-grid">
+                <div class="meta-card">
+                  <strong>Job ID</strong>
+                  <span id="job-id">-</span>
+                </div>
+                <div class="meta-card">
+                  <strong>Trạng thái</strong>
+                  <span id="status">-</span>
+                </div>
+                <div class="meta-card">
+                  <strong>Chunks</strong>
+                  <span id="chunks">-</span>
+                </div>
+                <div class="meta-card">
+                  <strong>Updated</strong>
+                  <span id="updated-at">-</span>
+                </div>
+              </div>
+
+              <div class="progress-card">
+                <div class="progress-head">
+                  <strong>Tiến độ xử lý</strong>
+                  <div class="inline-actions">
+                    <button id="retry-btn" class="hidden secondary-btn" type="button">Retry</button>
+                    <button id="cancel-btn" class="hidden cancel-btn" type="button">Hủy job</button>
+                    <span id="progress-text" class="muted">0%</span>
+                  </div>
+                </div>
+                <div class="progress-meter" aria-hidden="true">
+                  <div id="progress" class="progress-fill"></div>
+                </div>
+              </div>
+
+              <p id="result" class="message muted"></p>
+              <p id="error" class="message error"></p>
+              <div id="detail-actions" class="inline-actions hidden">
+                <a id="open-output-link" class="link-btn" href="#" target="_blank" rel="noopener">Mở file output</a>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <script src="/app-static/app.js"></script>
+</body>
+</html>

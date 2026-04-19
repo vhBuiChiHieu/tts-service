@@ -14,7 +14,8 @@ Mục tiêu chính:
 Thư mục chính: `python-tts-backend/`
 
 Các module chính:
-- `app/main.py`: khởi tạo FastAPI app, lifespan startup/shutdown, init DB, recover job RUNNING, khởi động worker, mount jobs API + control API, đồng thời serve giao diện local đơn giản tại `/app`.
+- `app/main.py`: khởi tạo FastAPI app, lifespan startup/shutdown, init DB, recover job RUNNING, khởi động worker, mount jobs API + control API, mount thêm UI router và static assets cho `/app`.
+- `app/ui/`: tách riêng local web UI; `router.py` serve route `/app`, `templates/app.html` chứa layout, `static/app.css` và `static/app.js` chứa giao diện/tab/pagination logic.
 - `app/api/jobs.py`: API quản lý, tạo, retry, cancel và theo dõi job (`POST /v1/jobs`, `POST /v1/jobs/tts-file-txt`, `POST /v1/jobs/sangtacviet`, `POST /v1/jobs/retry/{job_id}`, `POST /v1/jobs/{job_id}/cancel`, `GET /v1/jobs`, `GET /v1/jobs/{job_id}`, `DELETE /v1/jobs/all`).
 - `app/api/control.py`: API local-only cho tray/backend control (`/v1/control/status`, `/v1/control/shutdown`).
 - `app/db/`: SQLAlchemy session/model/repository cho bảng jobs.
@@ -44,10 +45,14 @@ Các endpoint bổ sung:
 - `GET /app`
 
 Giao diện local `/app` hiện có:
-- form tối giản gồm chọn file `.txt` và `speed`
+- 2 tab chính: `Tạo job` và `Danh sách job`
+- tab tạo job gồm chọn file `.txt` và `speed`
+- tab danh sách job có filter trạng thái và phân trang server-side
+- drawer chi tiết bên phải cho job đang chọn
 - submit trực tiếp tới `POST /v1/jobs/tts-file-txt`
-- polling `GET /v1/jobs/{job_id}` mỗi giây để theo dõi đúng job vừa tạo
-- thanh tiến độ đổi màu theo trạng thái: xanh lá khi `RUNNING`, xanh dương khi `SUCCEEDED`, đỏ khi `FAILED`
+- polling `GET /v1/jobs/{job_id}` mỗi giây để theo dõi đúng job đang được chọn
+- thao tác `retry`, `cancel` và mở file output trực tiếp trên UI
+- thanh tiến độ đổi màu theo trạng thái: xanh lá khi `RUNNING`, xanh dương khi `SUCCEEDED`, đỏ khi `FAILED`, xám khi `CANCELLED`
 
 Luồng chạy prototype mới:
 1. User có thể chạy `python python-tts-backend/run_backend.py` để start backend trực tiếp.
@@ -55,7 +60,7 @@ Luồng chạy prototype mới:
 3. Tray sẽ start backend dạng detached bằng subprocess nếu backend chưa chạy.
 4. Tray gọi `GET /v1/control/status` để hiển thị trạng thái.
 5. Khi user chọn `Giao diện ứng dụng`, tray mở `GET /app` trên backend local.
-6. Giao diện local cho phép chọn file `.txt`, nhập `speed`, submit job và theo dõi tiến độ realtime cho đúng job vừa tạo.
+6. Giao diện local cho phép chọn file `.txt`, nhập `speed`, submit job, chuyển qua tab danh sách, rồi theo dõi và thao tác với job realtime.
 7. Khi user chọn stop, tray gọi `POST /v1/control/shutdown` để backend dừng graceful.
 8. Worker dừng cooperative thay vì bị cắt đột ngột. User cũng có thể bấm "Hủy job" trên UI để cancel riêng lẻ từng job một cách an toàn.
 9. Nếu đang xử lý giữa chừng lúc shutdown, job bị đánh FAILED với mã `BACKEND_SHUTDOWN`.
