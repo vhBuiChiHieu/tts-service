@@ -18,6 +18,10 @@ from app.core.schemas import (
     TRACK_JOB_DESCRIPTION,
     TRACK_JOB_OPERATION_ID,
     TRACK_JOB_SUMMARY,
+    CANCEL_JOB_DESCRIPTION,
+    CANCEL_JOB_OPERATION_ID,
+    CANCEL_JOB_RESPONSES,
+    CANCEL_JOB_SUMMARY,
     CreateJobRequest,
     CreateJobResponse,
     JobErrorResponse,
@@ -139,42 +143,7 @@ def create_job_sangtacviet(
     return CreateJobResponse(job_id=job.job_id, status=job.status, created_at=job.created_at)
 
 
-@router.post(
-    "/retry/{job_id}",
-    response_model=CreateJobResponse,
-    status_code=202,
-    summary="Retry a failed TTS job",
-    description="Requeue a failed job on the same job ID so the worker can resume from its persisted partial audio.",
-    operation_id="retry_job",
-)
-def retry_job(
-    job_id: str = Path(..., description=JOB_ID_DESCRIPTION, examples=[JOB_ID_EXAMPLE]),
-    db: Session = Depends(get_db),
-):
-    repo = JobRepo(db)
-    job = repo.retry_failed_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="failed job not found")
-    return CreateJobResponse(job_id=job.job_id, status=job.status, created_at=job.created_at)
-
-
-@router.get(
-    "/{job_id}",
-    response_model=JobTrackingResponse,
-    summary=TRACK_JOB_SUMMARY,
-    description=TRACK_JOB_DESCRIPTION,
-    operation_id=TRACK_JOB_OPERATION_ID,
-    responses=JOB_TRACKING_RESPONSES,
-)
-def get_job(
-    job_id: str = Path(..., description=JOB_ID_DESCRIPTION, examples=[JOB_ID_EXAMPLE]),
-    db: Session = Depends(get_db),
-):
-    repo = JobRepo(db)
-    job = repo.get_job(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="job not found")
-
+def build_tracking_response(job) -> JobTrackingResponse:
     return JobTrackingResponse(
         job_id=job.job_id,
         status=job.status,
@@ -205,6 +174,67 @@ def get_job(
     )
 
 
+@router.post(
+    "/{job_id}/cancel",
+    response_model=JobTrackingResponse,
+    summary=CANCEL_JOB_SUMMARY,
+    description=CANCEL_JOB_DESCRIPTION,
+    operation_id=CANCEL_JOB_OPERATION_ID,
+    responses=CANCEL_JOB_RESPONSES,
+)
+def cancel_job(
+    job_id: str = Path(..., description=JOB_ID_DESCRIPTION, examples=[JOB_ID_EXAMPLE]),
+    db: Session = Depends(get_db),
+):
+    repo = JobRepo(db)
+    existing = repo.get_job(job_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="job not found")
+    job = repo.request_cancel(job_id)
+    if not job:
+        raise HTTPException(status_code=409, detail="job cannot be cancelled from its current status")
+    return build_tracking_response(job)
+
+
+@router.post(
+    "/retry/{job_id}",
+    response_model=CreateJobResponse,
+    status_code=202,
+    summary="Retry a failed TTS job",
+    description="Requeue a failed job on the same job ID so the worker can resume from its persisted partial audio.",
+    operation_id="retry_job",
+)
+def retry_job(
+    job_id: str = Path(..., description=JOB_ID_DESCRIPTION, examples=[JOB_ID_EXAMPLE]),
+    db: Session = Depends(get_db),
+):
+    repo = JobRepo(db)
+    job = repo.retry_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="retryable job not found")
+    return CreateJobResponse(job_id=job.job_id, status=job.status, created_at=job.created_at)
+
+
+@router.get(
+    "/{job_id}",
+    response_model=JobTrackingResponse,
+    summary=TRACK_JOB_SUMMARY,
+    description=TRACK_JOB_DESCRIPTION,
+    operation_id=TRACK_JOB_OPERATION_ID,
+    responses=JOB_TRACKING_RESPONSES,
+)
+def get_job(
+    job_id: str = Path(..., description=JOB_ID_DESCRIPTION, examples=[JOB_ID_EXAMPLE]),
+    db: Session = Depends(get_db),
+):
+    repo = JobRepo(db)
+    job = repo.get_job(job_id)
+    if not job:
+        raise HTTPException(status_code=404, detail="job not found")
+
+    return build_tracking_response(job)
+
+
 @router.get(
     "",
     response_model=JobListResponse,
@@ -222,37 +252,7 @@ def list_jobs(
     jobs, total = repo.get_jobs(skip=skip, limit=size)
     pages = (total + size - 1) // size
 
-    items = [
-        JobTrackingResponse(
-            job_id=job.job_id,
-            status=job.status,
-            progress=JobProgressResponse(
-                total_chunks=job.total_chunks or 0,
-                processed_chunks=job.processed_chunks,
-                progress_pct=job.progress_pct,
-                position=JobPositionResponse(
-                    current_chunk_index=job.current_chunk_index,
-                    current_char_offset=job.current_char_offset,
-                    total_chars=job.total_chars,
-                ),
-            ),
-            result=JobResultResponse(
-                file_name=job.result_file_name,
-                file_path=job.result_file_path,
-                duration_ms=job.result_duration_ms,
-            ),
-            error=(
-                JobErrorResponse(code=job.error_code, message=job.error_message)
-                if job.error_code or job.error_message
-                else None
-            ),
-            created_at=job.created_at,
-            started_at=job.started_at,
-            updated_at=job.updated_at,
-            finished_at=job.finished_at,
-        )
-        for job in jobs
-    ]
+    items = [build_tracking_response(job) for job in jobs]
 
     return JobListResponse(
         items=items,

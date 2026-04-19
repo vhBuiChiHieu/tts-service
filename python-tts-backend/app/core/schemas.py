@@ -119,10 +119,10 @@ class JobErrorResponse(BaseModel):
 
 class JobTrackingResponse(BaseModel):
     job_id: str = Field(description="Unique identifier of the job.")
-    status: str = Field(description="Current job status.", examples=["RUNNING"])
+    status: str = Field(description="Current job status.", examples=["RUNNING", "CANCELLED"])
     progress: JobProgressResponse
     result: JobResultResponse
-    error: JobErrorResponse | None = Field(default=None, description="Failure payload when the job does not succeed.")
+    error: JobErrorResponse | None = Field(default=None, description="Failure payload when the job fails. Cancelled jobs return null.")
     created_at: str = Field(description="Creation timestamp in ISO-8601 format.")
     started_at: str | None = Field(default=None, description="Processing start timestamp in ISO-8601 format.")
     updated_at: str = Field(description="Last update timestamp in ISO-8601 format.")
@@ -216,6 +216,17 @@ class ValidationErrorResponse(BaseModel):
     detail: str | list[dict] = Field(description="Validation or domain error returned by FastAPI.")
 
     model_config = {"json_schema_extra": {"example": {"detail": "chapter text must be non-empty"}}}
+
+
+CANCEL_JOB_SUMMARY = "Cancel a queued or running TTS job"
+CANCEL_JOB_DESCRIPTION = "Request cancellation for a queued or running job. Running jobs stop cooperatively at the next safe checkpoint and keep partial chunks for retry."
+CANCEL_JOB_OPERATION_ID = "cancel_job"
+
+CANCEL_JOB_RESPONSES = {
+    200: {"description": "Cancellation request accepted."},
+    404: {"model": JobNotFoundErrorResponse, "description": "Job not found."},
+    409: {"model": ValidationErrorResponse, "description": "Job cannot be cancelled from its current status."},
+}
 
 
 OPENAPI_TAGS = [

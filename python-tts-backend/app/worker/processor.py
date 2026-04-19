@@ -5,6 +5,15 @@ from app.core.config import settings
 from app.core.errors import JobErrorCode
 
 
+class JobCancelled(Exception):
+    pass
+
+
+def _raise_if_cancel_requested(repo, job_id: str) -> None:
+    if repo.is_cancel_requested(job_id):
+        raise JobCancelled("job cancellation requested")
+
+
 def _raise_if_stopping(stop_event: threading.Event | None) -> None:
     if stop_event and stop_event.is_set():
         raise RuntimeError("backend is shutting down")
@@ -16,8 +25,9 @@ def process_job(job_id, repo, chunker, adapter, merger, output_path, partial_out
         return
 
     try:
-        _raise_if_stopping(stop_event)
         repo.mark_running(job_id)
+        _raise_if_cancel_requested(repo, job_id)
+        _raise_if_stopping(stop_event)
         chunks = chunker(job.input_text, max_chars)
         total_chunks = len(chunks)
         chunk_dir = partial_output_path
@@ -43,6 +53,7 @@ def process_job(job_id, repo, chunker, adapter, merger, output_path, partial_out
 
         for idx, chunk in enumerate(chunks[start_index:], start=start_index + 1):
             _raise_if_stopping(stop_event)
+            _raise_if_cancel_requested(repo, job_id)
             last_error = None
             for _ in range(settings.chunk_retry_max + 1):
                 _raise_if_stopping(stop_event)
@@ -72,15 +83,18 @@ def process_job(job_id, repo, chunker, adapter, merger, output_path, partial_out
                 current_char_offset=chunk["char_end"],
                 total_chars=len(job.input_text),
             )
+            _raise_if_cancel_requested(repo, job_id)
             delay = random.uniform(settings.random_delay_min_sec, settings.random_delay_max_sec)
             if stop_event and stop_event.wait(delay):
                 raise RuntimeError("backend is shutting down")
 
         _raise_if_stopping(stop_event)
+        _raise_if_cancel_requested(repo, job_id)
         if chunk_dir:
             duration_ms = merger.merge_files(merger.chunk_paths_for_total(chunk_dir, total_chunks), output_path)
         else:
             duration_ms = merger.export(output_path)
+        _raise_if_cancel_requested(repo, job_id)
         repo.mark_success(job_id, output_path=output_path, duration_ms=duration_ms)
         if chunk_dir:
             try:
@@ -89,6 +103,8 @@ def process_job(job_id, repo, chunker, adapter, merger, output_path, partial_out
                 pass
     except ValueError as exc:
         repo.mark_failed(job_id, JobErrorCode.PROVIDER_RESPONSE_INVALID, str(exc))
+    except JobCancelled:
+        repo.mark_cancelled(job_id)
     except RuntimeError as exc:
         repo.mark_failed(job_id, JobErrorCode.BACKEND_SHUTDOWN, str(exc))
     except Exception as exc:

@@ -17,7 +17,7 @@ from app.worker.processor import process_job
 
 
 def recover_running_jobs(repo: JobRepo) -> None:
-    repo.requeue_running_jobs()
+    repo.recover_incomplete_jobs()
 
 
 def build_output_path(output_dir: str, job_id: str, output_prefix: str | None) -> str:

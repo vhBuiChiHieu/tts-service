@@ -426,3 +426,102 @@ def test_process_job_marks_success_when_chunk_cleanup_fails(db_session, tmp_path
     assert saved.status == "SUCCEEDED"
     assert chunk_dir.exists()
     assert saved.result_file_path == output_path.replace("\\", "/")
+
+
+def test_process_job_marks_cancelled_when_request_exists_before_next_chunk(db_session, tmp_path):
+    from app.db.repo_jobs import JobRepo
+
+    repo = JobRepo(db_session)
+    job = repo.create_job("chunk-1 chunk-2", "vi", None, 1.0, 0.0)
+    repo.mark_running(job.job_id)
+    repo.request_cancel(job.job_id)
+
+    chunk_dir = tmp_path / "chunks"
+    chunk_dir.mkdir()
+    merger = DummyMerger()
+    process_job(
+        job_id=job.job_id,
+        repo=repo,
+        chunker=lambda text, max_chars: [
+            {"chunk_index": 1, "char_end": 7, "text": "chunk-1"},
+            {"chunk_index": 2, "char_end": 15, "text": "chunk-2"},
+        ],
+        adapter=DummyAdapter(),
+        merger=merger,
+        output_path=str(tmp_path / "final.mp3"),
+        partial_output_path=str(chunk_dir),
+        max_chars=200,
+    )
+
+    saved = repo.get_job(job.job_id)
+    assert saved.status == "CANCELLED"
+    assert saved.processed_chunks == 0
+    assert chunk_dir.exists()
+
+
+def test_process_job_marks_cancelled_and_keeps_chunks_when_cancelled_during_delay(db_session, tmp_path):
+    from app.db.repo_jobs import JobRepo
+
+    repo = JobRepo(db_session)
+    job = repo.create_job("chunk-1 chunk-2", "vi", None, 1.0, 0.0)
+
+    original_min = processor_module.settings.random_delay_min_sec
+    original_max = processor_module.settings.random_delay_max_sec
+    processor_module.settings.random_delay_min_sec = 0.2
+    processor_module.settings.random_delay_max_sec = 0.2
+    try:
+        timer = threading.Timer(0.05, lambda: repo.request_cancel(job.job_id))
+        timer.start()
+        process_job(
+            job_id=job.job_id,
+            repo=repo,
+            chunker=lambda text, max_chars: [
+                {"chunk_index": 1, "char_end": 7, "text": "chunk-1"},
+                {"chunk_index": 2, "char_end": 15, "text": "chunk-2"},
+            ],
+            adapter=DummyAdapter(),
+            merger=DummyMerger(),
+            output_path=str(tmp_path / "final.mp3"),
+            partial_output_path=str(tmp_path / "chunks"),
+            max_chars=200,
+            stop_event=threading.Event(),
+        )
+        timer.cancel()
+    finally:
+        processor_module.settings.random_delay_min_sec = original_min
+        processor_module.settings.random_delay_max_sec = original_max
+
+    saved = repo.get_job(job.job_id)
+    assert saved.status == "CANCELLED"
+    assert saved.processed_chunks == 1
+    assert saved.result_file_path is None
+
+
+def test_process_job_marks_cancelled_before_final_merge_without_cleanup(db_session, tmp_path):
+    from app.db.repo_jobs import JobRepo
+
+    repo = JobRepo(db_session)
+    job = repo.create_job("chunk-1", "vi", None, 1.0, 0.0)
+    merger = DummyMerger()
+    chunk_dir = tmp_path / "chunks"
+
+    def cancel_before_merge(input_paths, output_path):
+        repo.request_cancel(job.job_id)
+        return 1000
+
+    merger.merge_files = cancel_before_merge
+    process_job(
+        job_id=job.job_id,
+        repo=repo,
+        chunker=lambda text, max_chars: [{"chunk_index": 1, "char_end": len(text), "text": text}],
+        adapter=DummyAdapter(),
+        merger=merger,
+        output_path=str(tmp_path / "final.mp3"),
+        partial_output_path=str(chunk_dir),
+        max_chars=200,
+    )
+
+    saved = repo.get_job(job.job_id)
+    assert saved.status == "CANCELLED"
+    assert chunk_dir.exists()
+

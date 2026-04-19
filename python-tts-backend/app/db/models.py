@@ -22,7 +22,8 @@ class Job(Base):
     speed: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
     volume_gain_db: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
     output_prefix: Mapped[str | None] = mapped_column(String, nullable=True)
-
+    cancel_requested_at: Mapped[str | None] = mapped_column(String, nullable=True)
+    cancel_reason: Mapped[str | None] = mapped_column(Text, nullable=True)
     total_chars: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     total_chunks: Mapped[int | None] = mapped_column(Integer, nullable=True)
     processed_chunks: Mapped[int] = mapped_column(Integer, nullable=False, default=0)

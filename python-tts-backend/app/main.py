@@ -287,6 +287,17 @@ def application_ui() -> HTMLResponse:
       box-shadow: 0 0 0 4px rgba(180, 83, 9, 0.14);
     }
 
+    .badge.status-cancelled {
+      color: var(--muted);
+      background: #e2e8f0;
+      border-color: #cbd5e1;
+    }
+
+    .badge.status-cancelled::before {
+      background: #64748b;
+      box-shadow: 0 0 0 4px rgba(100, 116, 139, 0.14);
+    }
+
     form {
       display: grid;
       gap: 18px;
@@ -368,6 +379,32 @@ def application_ui() -> HTMLResponse:
       cursor: wait;
       opacity: 0.7;
       box-shadow: none;
+    }
+
+    .cancel-btn {
+      appearance: none;
+      border: 1px solid var(--border-strong);
+      border-radius: 12px;
+      padding: 6px 12px;
+      min-width: auto;
+      font-size: 13px;
+      font-weight: 600;
+      cursor: pointer;
+      color: var(--danger);
+      background: transparent;
+      box-shadow: none;
+    }
+
+    .cancel-btn:hover:not(:disabled) {
+      background: var(--danger-soft);
+      border-color: rgba(220, 38, 38, 0.3);
+      box-shadow: none;
+      transform: none;
+    }
+
+    .cancel-btn:disabled {
+      cursor: wait;
+      opacity: 0.5;
     }
 
     .helper {
@@ -462,6 +499,10 @@ def application_ui() -> HTMLResponse:
 
     .progress-fill.progress-state-failed {
       background: linear-gradient(90deg, #f87171 0%, #dc2626 100%);
+    }
+
+    .progress-fill.progress-state-cancelled {
+      background: linear-gradient(90deg, #94a3b8 0%, #64748b 100%);
     }
 
     .message {
@@ -583,7 +624,10 @@ def application_ui() -> HTMLResponse:
           <div class="progress-card">
             <div class="progress-head">
               <strong>Tiến độ xử lý</strong>
-              <span id="progress-text" class="muted">0%</span>
+              <div style="display: flex; gap: 12px; align-items: center;">
+                <button id="cancel-btn" class="hidden cancel-btn" type="button">Hủy job</button>
+                <span id="progress-text" class="muted">0%</span>
+              </div>
             </div>
             <div class="progress-meter" aria-hidden="true">
               <div id="progress" class="progress-fill"></div>
@@ -640,11 +684,16 @@ def application_ui() -> HTMLResponse:
         return;
       }
 
+      if (normalizedState === 'CANCELLED') {
+        statusBadge.classList.add('status-cancelled');
+        return;
+      }
+
       statusBadge.classList.add('status-queued');
     }
 
     function setProgressState(state) {
-      progressBar.classList.remove('progress-state-running', 'progress-state-succeeded', 'progress-state-failed');
+      progressBar.classList.remove('progress-state-running', 'progress-state-succeeded', 'progress-state-failed', 'progress-state-cancelled');
 
       if (state === 'RUNNING') {
         progressBar.classList.add('progress-state-running');
@@ -658,6 +707,12 @@ def application_ui() -> HTMLResponse:
 
       if (state === 'FAILED') {
         progressBar.classList.add('progress-state-failed');
+        return;
+      }
+
+      if (state === 'CANCELLED') {
+        progressBar.classList.add('progress-state-cancelled');
+        return;
       }
     }
 
@@ -666,6 +721,13 @@ def application_ui() -> HTMLResponse:
       jobIdText.textContent = job.job_id;
       statusText.textContent = job.status;
       setStatusBadge(job.status);
+
+      const cancelBtn = document.getElementById('cancel-btn');
+      if (['QUEUED', 'RUNNING'].includes(job.status)) {
+        cancelBtn.classList.remove('hidden');
+      } else {
+        cancelBtn.classList.add('hidden');
+      }
 
       const progress = Math.max(0, Math.min(100, job.progress?.progress_pct ?? 0));
       progressBar.style.width = `${progress}%`;
@@ -690,7 +752,18 @@ def application_ui() -> HTMLResponse:
         resultText.className = 'message muted';
         stopPolling();
         submitButton.disabled = false;
-        submitButton.textContent = 'Tạo job';
+        submitButton.textContent = 'Thử lại job';
+        return;
+      }
+
+      if (job.status === 'CANCELLED') {
+        setProgressState('CANCELLED');
+        errorText.textContent = 'Job đã bị hủy';
+        resultText.textContent = '';
+        resultText.className = 'message muted';
+        stopPolling();
+        submitButton.disabled = false;
+        submitButton.textContent = 'Tiếp tục xử lý (Retry)';
         return;
       }
 
@@ -702,6 +775,20 @@ def application_ui() -> HTMLResponse:
       resultText.className = 'message muted';
       errorText.textContent = '';
     }
+
+    document.getElementById('cancel-btn').addEventListener('click', async () => {
+      const jobId = jobIdText.textContent;
+      if (!jobId || jobId === '-') return;
+      const cancelBtn = document.getElementById('cancel-btn');
+      cancelBtn.disabled = true;
+      try {
+        await fetch(`/v1/jobs/${jobId}/cancel`, { method: 'POST' });
+      } catch (error) {
+        console.error("Cancel failed:", error);
+      } finally {
+        cancelBtn.disabled = false;
+      }
+    });
 
     async function fetchJob(jobId) {
       const response = await fetch(`/v1/jobs/${jobId}`);
@@ -727,14 +814,24 @@ def application_ui() -> HTMLResponse:
       formData.append('file', file);
 
       try {
-        const response = await fetch(`/v1/jobs/tts-file-txt?speed=${encodeURIComponent(speed)}`, {
+        let endpoint = `/v1/jobs/tts-file-txt?speed=${encodeURIComponent(speed)}`;
+        const options = { body: formData };
+
+        const currentStatus = statusText.textContent;
+        const currentJobId = jobIdText.textContent;
+        if (currentJobId && currentJobId !== '-' && (currentStatus === 'FAILED' || currentStatus === 'CANCELLED')) {
+          endpoint = `/v1/jobs/retry/${currentJobId}`;
+          options.body = null;
+        }
+
+        const response = await fetch(endpoint, {
           method: 'POST',
-          body: formData,
+          ...options
         });
 
         if (!response.ok) {
           const payload = await response.json().catch(() => ({}));
-          throw new Error(payload.detail || 'Không tạo được job');
+          throw new Error(payload.detail || 'Không tạo được hoặc thử lại job');
         }
 
         const created = await response.json();

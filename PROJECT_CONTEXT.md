@@ -15,7 +15,7 @@ Thư mục chính: `python-tts-backend/`
 
 Các module chính:
 - `app/main.py`: khởi tạo FastAPI app, lifespan startup/shutdown, init DB, recover job RUNNING, khởi động worker, mount jobs API + control API, đồng thời serve giao diện local đơn giản tại `/app`.
-- `app/api/jobs.py`: API quản lý, tạo, retry và theo dõi job (`POST /v1/jobs`, `POST /v1/jobs/tts-file-txt`, `POST /v1/jobs/sangtacviet`, `POST /v1/jobs/retry/{job_id}`, `GET /v1/jobs`, `GET /v1/jobs/{job_id}`, `DELETE /v1/jobs/all`).
+- `app/api/jobs.py`: API quản lý, tạo, retry, cancel và theo dõi job (`POST /v1/jobs`, `POST /v1/jobs/tts-file-txt`, `POST /v1/jobs/sangtacviet`, `POST /v1/jobs/retry/{job_id}`, `POST /v1/jobs/{job_id}/cancel`, `GET /v1/jobs`, `GET /v1/jobs/{job_id}`, `DELETE /v1/jobs/all`).
 - `app/api/control.py`: API local-only cho tray/backend control (`/v1/control/status`, `/v1/control/shutdown`).
 - `app/db/`: SQLAlchemy session/model/repository cho bảng jobs.
 - `app/tts/`: token manager, Google adapter, chunker.
@@ -57,7 +57,7 @@ Luồng chạy prototype mới:
 5. Khi user chọn `Giao diện ứng dụng`, tray mở `GET /app` trên backend local.
 6. Giao diện local cho phép chọn file `.txt`, nhập `speed`, submit job và theo dõi tiến độ realtime cho đúng job vừa tạo.
 7. Khi user chọn stop, tray gọi `POST /v1/control/shutdown` để backend dừng graceful.
-8. Worker dừng cooperative thay vì bị cắt đột ngột.
+8. Worker dừng cooperative thay vì bị cắt đột ngột. User cũng có thể bấm "Hủy job" trên UI để cancel riêng lẻ từng job một cách an toàn.
 9. Nếu đang xử lý giữa chừng lúc shutdown, job bị đánh FAILED với mã `BACKEND_SHUTDOWN`.
 
 Smoke test đã xác nhận:
@@ -86,17 +86,18 @@ Tổng số test targeted đã verify trong lần cập nhật này: 25 pass.
 6. Processor tách text thành chunks (có offset), gọi provider TTS cho từng chunk với `speed=1.0` để ổn định provider response.
 7. Sau mỗi chunk, cập nhật progress (`processed_chunks`, `progress_pct`, vị trí char).
 8. Merger áp `volume_gain_db` lên từng chunk audio trước khi ghép.
-9. Sau mỗi chunk thành công, processor export riêng chunk đó thành file MP3 tạm (`0001.mp3`, `0002.mp3`, ...) để có thể resume nếu job fail giữa chừng.
-10. Khi retry `POST /v1/jobs/retry/{job_id}`, job `FAILED` được đưa lại về `QUEUED` trên chính `job_id`, giữ nguyên progress đã hoàn tất để worker resume từ chunk còn thiếu nếu các chunk tạm trước đó còn đủ.
-11. Nếu metadata progress còn nhưng thiếu chunk tạm, processor sẽ reset progress về 0 và synth lại từ đầu để tránh tạo file final bị thiếu đoạn đầu.
-12. Khi export final, Merger merge toàn bộ chunk tạm một lần, áp speed hậu kỳ trên toàn file bằng ffmpeg `atempo` theo `job.speed`; tên file là `outputs/{output_prefix}-{job_id}.mp3` nếu có prefix, ngược lại `outputs/{job_id}.mp3`.
-13. Google adapter vẫn giữ fallback an toàn về `speed=1.0` và log raw response khi parse fail.
-14. Thành công: `SUCCEEDED` + thông tin file/duration`, đồng thời xóa thư mục chunk tạm.
-15. Thất bại: `FAILED` + `error_code`/`error_message`.
+9. Sau mỗi chunk thành công, processor export riêng chunk đó thành file MP3 tạm (`0001.mp3`, `0002.mp3`, ...) để có thể resume nếu job fail hoặc bị hủy (CANCELLED) giữa chừng.
+10. Tại các điểm an toàn (đầu chunk, sau chunk, trong lúc delay), worker kiểm tra cờ báo hủy. Nếu có, tiến trình dừng lập tức và lưu trạng thái `CANCELLED`.
+11. Khi retry `POST /v1/jobs/retry/{job_id}`, job `FAILED` hoặc `CANCELLED` được đưa lại về `QUEUED` trên chính `job_id`, giữ nguyên progress đã hoàn tất để worker resume từ chunk còn thiếu nếu các chunk tạm trước đó còn đủ.
+12. Nếu metadata progress còn nhưng thiếu chunk tạm, processor sẽ reset progress về 0 và synth lại từ đầu để tránh tạo file final bị thiếu đoạn đầu.
+13. Khi export final, Merger merge toàn bộ chunk tạm một lần, áp speed hậu kỳ trên toàn file bằng ffmpeg `atempo` theo `job.speed`; tên file là `outputs/{output_prefix}-{job_id}.mp3` nếu có prefix, ngược lại `outputs/{job_id}.mp3`.
+14. Google adapter vẫn giữ fallback an toàn về `speed=1.0` và log raw response khi parse fail.
+15. Thành công: `SUCCEEDED` + thông tin file/duration`, đồng thời xóa thư mục chunk tạm.
+16. Thất bại: `FAILED` + `error_code`/`error_message`. Hoặc bị hủy: `CANCELLED`.
 
 ## 4. Dữ liệu job tracking
 Thông tin tracking gồm:
-- `status`: `QUEUED | RUNNING | SUCCEEDED | FAILED`
+- `status`: `QUEUED | RUNNING | SUCCEEDED | FAILED | CANCELLED`
 - `progress`: total/processed/progress_pct/position
 - `result`: file_name/file_path/duration_ms
 - `error`: code/message
@@ -130,10 +131,10 @@ Giá trị mặc định hiện tại (chạy từ repo root):
 - End-to-end đã tạo thành công file MP3 (khi có ffmpeg/ffprobe).
 - Đã thêm endpoint `POST /v1/jobs/sangtacviet` cho payload chapter list (gom text bằng dấu cách).
 - Đã thêm endpoint `POST /v1/jobs/tts-file-txt` hỗ trợ tạo job bằng upload `.txt` trực tiếp.
-- Bổ sung APIs quản lý danh sách: `GET /v1/jobs` (phân trang) và `DELETE /v1/jobs/all` (xóa toàn bộ).
+- Bổ sung APIs quản lý danh sách: `GET /v1/jobs` (phân trang) và `DELETE /v1/jobs/all` (xóa toàn bộ). Đã thêm API hủy job `POST /v1/jobs/{job_id}/cancel`.
 - Đã hỗ trợ `output_prefix` theo dạng `{book_id}-{start}-{end}` hoặc `{filename}` để đặt tên output file.
-- DB jobs đã có thêm cột nullable `output_prefix` và có bước tự thêm cột khi init DB với SQLite cũ.
-- Test suite hiện có: 35 pass, 1 skipped.
+- DB jobs đã có thêm cột nullable `output_prefix`, `cancel_requested_at`, `cancel_reason` và logic tự động migrate khi init DB với SQLite cũ.
+- Test suite toàn thời gian (health/api/.../control) hiện có: 63 pass.
 
 ## 7. Giới hạn hiện tại
 - Phụ thuộc vào endpoint nội bộ Google Translate (có thể thay đổi format bất kỳ lúc nào).

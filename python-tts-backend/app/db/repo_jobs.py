@@ -11,6 +11,8 @@ def now_iso() -> str:
 
 
 class JobRepo:
+    TERMINAL_STATUSES = {"SUCCEEDED", "FAILED", "CANCELLED"}
+
     def __init__(self, db: Session) -> None:
         self.db = db
 
@@ -115,23 +117,61 @@ class JobRepo:
         job.updated_at = now_iso()
         self.db.commit()
 
-    def retry_failed_job(self, job_id: str) -> Job | None:
+    def request_cancel(self, job_id: str, reason: str | None = None) -> Job | None:
         job = self.get_job(job_id)
-        if not job or job.status != "FAILED":
+        if not job or job.status in self.TERMINAL_STATUSES:
+            return None
+        timestamp = now_iso()
+        job.cancel_requested_at = timestamp
+        job.cancel_reason = reason
+        if job.status == "QUEUED":
+            job.status = "CANCELLED"
+            job.finished_at = timestamp
+        job.updated_at = timestamp
+        self.db.commit()
+        self.db.refresh(job)
+        return job
+
+    def is_cancel_requested(self, job_id: str) -> bool:
+        job = self.get_job(job_id)
+        if job:
+            self.db.refresh(job)
+        return bool(job and job.cancel_requested_at and job.status == "RUNNING")
+
+    def mark_cancelled(self, job_id: str) -> None:
+        job = self.get_job(job_id)
+        if not job:
+            return
+        timestamp = now_iso()
+        job.status = "CANCELLED"
+        job.finished_at = timestamp
+        job.updated_at = timestamp
+        self.db.commit()
+
+    def retry_job(self, job_id: str) -> Job | None:
+        job = self.get_job(job_id)
+        if not job or job.status not in {"FAILED", "CANCELLED"}:
             return None
         job.status = "QUEUED"
         job.error_code = None
         job.error_message = None
+        job.cancel_requested_at = None
+        job.cancel_reason = None
         job.finished_at = None
         job.updated_at = now_iso()
         self.db.commit()
         self.db.refresh(job)
         return job
 
-    def requeue_running_jobs(self) -> None:
+    def recover_incomplete_jobs(self) -> None:
         stmt = select(Job).where(Job.status == "RUNNING")
         rows = self.db.execute(stmt).scalars().all()
+        timestamp = now_iso()
         for job in rows:
-            job.status = "QUEUED"
-            job.updated_at = now_iso()
+            if job.cancel_requested_at:
+                job.status = "CANCELLED"
+                job.finished_at = timestamp
+            else:
+                job.status = "QUEUED"
+            job.updated_at = timestamp
         self.db.commit()

@@ -37,22 +37,19 @@ def test_app_ui_page_is_served():
 
     assert response.status_code == 200
     assert "text/html" in response.headers["content-type"]
-    assert "Giao diện ứng dụng" in response.text
+    assert "Local TTS Service" in response.text
     assert "/v1/jobs/tts-file-txt" in response.text
     assert "/v1/jobs/" in response.text
-    assert "--progress-running: #16a34a;" in response.text
-    assert "--progress-success: #2563eb;" in response.text
-    assert "--progress-failed: #dc2626;" in response.text
-    assert "progressBar.dataset.state = job.status;" in response.text
-    assert "progressBar.dataset.state = 'QUEUED';" in response.text
-    assert "progressBar.dataset.state = 'FAILED';" in response.text
-    assert "progressBar.dataset.state = 'SUCCEEDED';" in response.text
     assert "progress-state-running" in response.text
     assert "progress-state-succeeded" in response.text
     assert "progress-state-failed" in response.text
+    assert "progress-state-cancelled" in response.text
     assert "job.status === 'RUNNING'" in response.text
     assert "job.status === 'FAILED'" in response.text
     assert "job.status === 'SUCCEEDED'" in response.text
+    assert "job.status === 'CANCELLED'" in response.text
+    assert "cancel-btn" in response.text
+    assert "Hủy job" in response.text
 
 
 def test_tray_menu_contains_application_ui_item(monkeypatch):

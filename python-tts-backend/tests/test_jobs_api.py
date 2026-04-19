@@ -248,3 +248,154 @@ def test_post_jobs_sangtacviet_persists_joined_text_and_output_prefix():
 
     assert job.input_text == "A B C"
     assert job.output_prefix == "7577371088154266649-200-202"
+
+
+def test_cancel_job_updates_persisted_cancellation_fields():
+    from app.db.repo_jobs import JobRepo
+    from app.db.session import SessionLocal, init_db
+
+    init_db()
+    with SessionLocal() as db:
+        repo = JobRepo(db)
+        job = repo.create_job(
+            input_text="xin chao",
+            lang="vi",
+            voice_hint=None,
+            speed=1.0,
+            volume_gain_db=0.0,
+        )
+
+        cancelled = repo.request_cancel(job.job_id)
+
+        assert cancelled is not None
+        assert cancelled.status == "CANCELLED"
+        assert cancelled.cancel_requested_at is not None
+        assert cancelled.finished_at is not None
+
+
+def test_request_cancel_moves_queued_job_to_cancelled():
+    from app.db.repo_jobs import JobRepo
+    from app.db.session import SessionLocal, init_db
+
+    init_db()
+    with SessionLocal() as db:
+        repo = JobRepo(db)
+        job = repo.create_job("xin chao", "vi", None, 1.0, 0.0)
+
+        cancelled = repo.request_cancel(job.job_id)
+
+        assert cancelled is not None
+        assert cancelled.status == "CANCELLED"
+        assert cancelled.finished_at is not None
+
+
+def test_request_cancel_marks_running_job_for_cooperative_stop():
+    from app.db.repo_jobs import JobRepo
+    from app.db.session import SessionLocal, init_db
+
+    init_db()
+    with SessionLocal() as db:
+        repo = JobRepo(db)
+        job = repo.create_job("xin chao", "vi", None, 1.0, 0.0)
+        repo.mark_running(job.job_id)
+
+        cancelled = repo.request_cancel(job.job_id)
+
+        assert cancelled is not None
+        assert cancelled.status == "RUNNING"
+        assert cancelled.cancel_requested_at is not None
+        assert cancelled.finished_at is None
+
+
+def test_retry_cancelled_job_requeues_same_job_id_without_resetting_progress():
+    from app.db.repo_jobs import JobRepo
+    from app.db.session import SessionLocal, init_db
+
+    init_db()
+    with SessionLocal() as db:
+        repo = JobRepo(db)
+        job = repo.create_job("xin chao", "vi", None, 1.0, 0.0)
+        repo.update_progress(job.job_id, total_chunks=3, processed_chunks=1, current_chunk_index=1, current_char_offset=3, total_chars=8)
+        repo.request_cancel(job.job_id)
+        repo.mark_cancelled(job.job_id)
+
+        retried = repo.retry_job(job.job_id)
+
+        assert retried is not None
+        assert retried.job_id == job.job_id
+        assert retried.status == "QUEUED"
+        assert retried.processed_chunks == 1
+        assert retried.cancel_requested_at is None
+        assert retried.finished_at is None
+
+
+def test_post_jobs_cancel_queued_job_returns_cancelled():
+    from app.db.repo_jobs import JobRepo
+    from app.db.session import SessionLocal, init_db
+
+    init_db()
+    with SessionLocal() as db:
+        repo = JobRepo(db)
+        job = repo.create_job("xin chao", "vi", None, 1.0, 0.0)
+
+    client = TestClient(app)
+    response = client.post(f"/v1/jobs/{job.job_id}/cancel")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "CANCELLED"
+
+
+def test_post_jobs_cancel_running_job_records_request():
+    from app.db.repo_jobs import JobRepo
+    from app.db.session import SessionLocal, init_db
+
+    init_db()
+    with SessionLocal() as db:
+        repo = JobRepo(db)
+        job = repo.create_job("xin chao", "vi", None, 1.0, 0.0)
+        repo.mark_running(job.job_id)
+
+    client = TestClient(app)
+    response = client.post(f"/v1/jobs/{job.job_id}/cancel")
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "RUNNING"
+
+    with SessionLocal() as db:
+        saved = JobRepo(db).get_job(job.job_id)
+    assert saved.cancel_requested_at is not None
+
+
+def test_post_jobs_cancel_rejects_terminal_job():
+    from app.db.repo_jobs import JobRepo
+    from app.db.session import SessionLocal, init_db
+
+    init_db()
+    with SessionLocal() as db:
+        repo = JobRepo(db)
+        job = repo.create_job("xin chao", "vi", None, 1.0, 0.0)
+        repo.mark_failed(job.job_id, "UNEXPECTED_ERROR", "boom")
+
+    client = TestClient(app)
+    response = client.post(f"/v1/jobs/{job.job_id}/cancel")
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "job cannot be cancelled from its current status"}
+
+
+def test_post_jobs_retry_requeues_cancelled_job():
+    from app.db.repo_jobs import JobRepo
+    from app.db.session import SessionLocal, init_db
+
+    init_db()
+    with SessionLocal() as db:
+        repo = JobRepo(db)
+        job = repo.create_job("xin chao", "vi", None, 1.0, 0.0)
+        repo.request_cancel(job.job_id)
+        repo.mark_cancelled(job.job_id)
+
+    client = TestClient(app)
+    response = client.post(f"/v1/jobs/retry/{job.job_id}")
+
+    assert response.status_code == 202
+    assert response.json()["status"] == "QUEUED"

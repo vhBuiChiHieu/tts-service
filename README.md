@@ -5,13 +5,14 @@ Backend TTS local bằng FastAPI + SQLite + worker thread, tạo MP3 từ text q
 ## Features
 - Tạo job TTS qua API (`/v1/jobs`).
 - Tạo job trực tiếp bằng cách upload file text (`/v1/jobs/tts-file-txt`).
-- Quản lý danh sách job phân trang, retry job lỗi cùng job ID, và xóa toàn bộ dữ liệu (`GET /v1/jobs`, `POST /v1/jobs/retry/{job_id}`, `DELETE /v1/jobs/all`).
+- Hủy job an toàn (cooperative cancellation) không mất dữ liệu đã xử lý (`/v1/jobs/{job_id}/cancel`).
+- Quản lý danh sách job phân trang, retry job lỗi/bị hủy cùng job ID, và xóa toàn bộ dữ liệu (`GET /v1/jobs`, `POST /v1/jobs/retry/{job_id}`, `DELETE /v1/jobs/all`).
 - Tạo job từ payload chapter Sáng Tác Việt (`/v1/jobs/sangtacviet`).
 - Hỗ trợ per-job `speed` và `volume_gain_db` với default an toàn.
 - Theo dõi tiến độ xử lý job theo thời gian thực.
 - Xử lý chunk + retry + random delay.
 - Ghép audio, áp gain volume, và xuất ra file MP3.
-- Recover job `RUNNING` về `QUEUED` khi restart.
+- Ghi nhận ý định hủy và Recover job chạy lỗi/hủy dở dang về trạng thái `QUEUED` hoặc `CANCELLED` khi restart backend.
 - Có control API local-only để đọc trạng thái backend và shutdown graceful.
 - Có prototype tray app Windows để start/stop backend dạng detached.
 - Có giao diện local tối giản tại `/app` để upload `.txt`, nhập `speed`, submit job và theo dõi realtime đúng job vừa tạo.
@@ -58,7 +59,7 @@ Nếu chọn `Giao diện ứng dụng`, tray sẽ mở `http://127.0.0.1:8000/a
 - nhập `speed`
 - submit tới `POST /v1/jobs/tts-file-txt`
 - polling `GET /v1/jobs/{job_id}` mỗi giây cho đúng job vừa tạo
-- hiển thị thanh tiến độ với màu trạng thái: xanh lá khi `RUNNING`, xanh dương khi `SUCCEEDED`, đỏ khi `FAILED`
+- hiển thị thanh tiến độ với màu trạng thái: xanh lá khi `RUNNING`, xanh dương khi `SUCCEEDED`, đỏ khi `FAILED`, xám khi `CANCELLED`. Cho phép Hủy job thuận tiện qua nút trực quan.
 
 Nếu backend chưa chạy, mục này sẽ giống `Open API` và `Open Swagger Docs`: không mở URL chết mà sẽ báo trạng thái và mở `python-tts-backend/backend.log` nếu có.
 
@@ -275,24 +276,30 @@ curl -s -X POST "http://127.0.0.1:8000/v1/jobs/tts-file-txt" \
 curl -s "http://127.0.0.1:8000/v1/jobs?page=1&size=20"
 ```
 
-### 6) Retry failed job
+### 6) Retry failed/cancelled job
 ```bash
 curl -s -X POST "http://127.0.0.1:8000/v1/jobs/retry/<job_id>"
 ```
 
 Behavior:
-- Chỉ retry được khi job đang ở trạng thái `FAILED`.
+- Chỉ retry được khi job đang ở trạng thái `FAILED` hoặc `CANCELLED`.
 - Retry giữ nguyên `job_id` cũ.
 - Progress đã hoàn thành được giữ lại để worker resume từ chunk kế tiếp nếu các file chunk tạm trước đó còn đủ.
 - Nếu metadata progress còn nhưng thiếu chunk tạm, worker sẽ tự reset progress và synth lại từ đầu để tránh thiếu audio đầu file.
 - Thư mục chunk tạm sẽ bị xóa sau khi job hoàn tất thành công.
 
-### 7) Delete all jobs
+### 7) Cancel job
+```bash
+curl -s -X POST "http://127.0.0.1:8000/v1/jobs/<job_id>/cancel"
+```
+Job sẽ được đánh dấu `CANCELLED` hợp tác tại checkpoint an toàn tiếp theo.
+
+### 8) Delete all jobs
 ```bash
 curl -s -X DELETE "http://127.0.0.1:8000/v1/jobs/all"
 ```
 
-### 8) Track job
+### 9) Track job
 ```bash
 curl -s "http://127.0.0.1:8000/v1/jobs/<job_id>"
 ```
@@ -302,9 +309,9 @@ Khi thành công:
 - Với job thường: `result.file_path = python-tts-backend/outputs/<job_id>.mp3`
 - Với job Sáng Tác Việt: `result.file_path = python-tts-backend/outputs/<book_id>-<start>-<end>-<job_id>.mp3`
 
-Khi lỗi:
-- `status = FAILED`
-- kiểm tra `error.code` và `error.message`
+Khi lỗi hoặc bị hủy:
+- `status = FAILED` hoặc `CANCELLED`
+- kiểm tra `error.code` và `error.message` (mặc định job hủy sẽ không có error object để phân biệt rõ ràng).
 
 ## Run tests
 ```bash
