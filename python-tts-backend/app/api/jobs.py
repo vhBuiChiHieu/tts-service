@@ -118,6 +118,7 @@ def create_job_file_txt(
 )
 def create_job_sangtacviet(
     payload: SangTacVietCreateJobRequest = Body(openapi_examples=SANGTACVIET_BODY_EXAMPLES),
+    speed: float = Query(1.0, ge=0.5, le=2.0, description="Playback speed applied during final audio export."),
     db: Session = Depends(get_db),
 ):
     repo = JobRepo(db)
@@ -136,7 +137,7 @@ def create_job_sangtacviet(
         input_text=merged_text,
         lang=payload.lang,
         voice_hint=payload.voice_hint,
-        speed=payload.speed,
+        speed=speed,
         volume_gain_db=payload.volume_gain_db,
         output_prefix=output_prefix,
     )

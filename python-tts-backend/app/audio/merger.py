@@ -42,56 +42,64 @@ class AudioMerger:
         self.silence = AudioSegment.silent(duration=silent_between_chunks_ms)
         self.volume_gain_db = volume_gain_db
         self.speed = speed
+        self.crossfade_ms = 25
+        self.target_peak_dbfs = -1.0
+        self.target_sample_rate = 44100
+        self.export_quality = "2"
+
+    def _prepare_segment(self, seg: AudioSegment) -> AudioSegment:
+        prepared = seg.set_frame_rate(self.target_sample_rate).set_sample_width(2)
+        if self.volume_gain_db != 0.0:
+            prepared = prepared + self.volume_gain_db
+        if prepared.max_dBFS != float("-inf") and prepared.max_dBFS > self.target_peak_dbfs:
+            prepared = prepared.apply_gain(self.target_peak_dbfs - prepared.max_dBFS)
+        return prepared
+
+    def _append_with_crossfade(self, base: AudioSegment, addition: AudioSegment) -> AudioSegment:
+        if len(base) == 0:
+            return addition
+        effective_crossfade = min(self.crossfade_ms, len(base), len(addition))
+        if effective_crossfade <= 0:
+            return base + addition
+        return base.append(addition, crossfade=effective_crossfade)
+
+    def _export(self, audio: AudioSegment, output_path: str) -> int:
+        export_parameters = ["-q:a", self.export_quality]
+        if self.speed != 1.0:
+            if self.speed < 0.5 or self.speed > 2.0:
+                raise ValueError(f"invalid speed for post-process: {self.speed}")
+            export_parameters.extend(["-filter:a", f"atempo={self.speed}"])
+        audio.export(output_path, format="mp3", parameters=export_parameters)
+        exported = AudioSegment.from_file(output_path, format="mp3")
+        return len(exported)
 
     def load(self, input_path: str) -> None:
-        self.buffer = AudioSegment.from_file(input_path, format="mp3")
+        self.buffer = self._prepare_segment(AudioSegment.from_file(input_path, format="mp3"))
 
     def append_base64_mp3(self, b64: str) -> None:
         raw = base64.b64decode(b64)
-        seg = AudioSegment.from_file(BytesIO(raw), format="mp3")
-        if self.volume_gain_db != 0.0:
-            seg = seg + self.volume_gain_db
-        self.buffer += seg + self.silence
+        seg = self._prepare_segment(AudioSegment.from_file(BytesIO(raw), format="mp3"))
+        self.buffer = self._append_with_crossfade(self.buffer, seg)
+        if len(self.silence) > 0:
+            self.buffer += self.silence
 
     def reset(self) -> None:
         self.buffer = AudioSegment.empty()
 
     def export(self, output_path: str) -> int:
-        if self.speed == 1.0:
-            self.buffer.export(output_path, format="mp3")
-        else:
-            if self.speed < 0.5 or self.speed > 2.0:
-                raise ValueError(f"invalid speed for post-process: {self.speed}")
-            self.buffer.export(
-                output_path,
-                format="mp3",
-                parameters=["-filter:a", f"atempo={self.speed}"],
-            )
-        exported = AudioSegment.from_file(output_path, format="mp3")
-        return len(exported)
+        return self._export(self.buffer, output_path)
 
     def export_chunk(self, b64: str, output_path: str) -> None:
-        self.reset()
-        self.append_base64_mp3(b64)
-        self.buffer.export(output_path, format="mp3")
-        self.reset()
+        raw = base64.b64decode(b64)
+        seg = self._prepare_segment(AudioSegment.from_file(BytesIO(raw), format="mp3"))
+        self._export(seg, output_path)
 
     def merge_files(self, input_paths: list[str], output_path: str) -> int:
         merged = AudioSegment.empty()
         for input_path in input_paths:
-            merged += AudioSegment.from_file(input_path, format="mp3")
-        if self.speed == 1.0:
-            merged.export(output_path, format="mp3")
-        else:
-            if self.speed < 0.5 or self.speed > 2.0:
-                raise ValueError(f"invalid speed for post-process: {self.speed}")
-            merged.export(
-                output_path,
-                format="mp3",
-                parameters=["-filter:a", f"atempo={self.speed}"],
-            )
-        exported = AudioSegment.from_file(output_path, format="mp3")
-        return len(exported)
+            seg = self._prepare_segment(AudioSegment.from_file(input_path, format="mp3"))
+            merged = self._append_with_crossfade(merged, seg)
+        return self._export(merged, output_path)
 
     def chunk_path(self, chunk_dir: str, chunk_index: int) -> str:
         return os.path.join(chunk_dir, f"{chunk_index:04d}.mp3")

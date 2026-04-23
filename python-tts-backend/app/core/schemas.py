@@ -54,7 +54,6 @@ class SangTacVietCreateJobRequest(BaseModel):
     lang: str = Field(default="vi", min_length=2, max_length=10, description="Target language code.")
     voice_hint: str | None = Field(default=None, description="Optional provider-specific voice hint.")
     metadata: dict = Field(default_factory=dict, description="Optional client metadata reserved for future use.")
-    speed: float = Field(default=1.0, ge=0.5, le=2.0, description="Playback speed applied during final audio export.")
     volume_gain_db: float = Field(default=0.0, ge=-20.0, le=20.0, description="Volume gain in decibels applied before export.")
 
     model_config = {
@@ -70,7 +69,6 @@ class SangTacVietCreateJobRequest(BaseModel):
                 "lang": "vi",
                 "voice_hint": None,
                 "metadata": {"source": "sangtacviet"},
-                "speed": 1.0,
                 "volume_gain_db": 0.0,
             }
         }

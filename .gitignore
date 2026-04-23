@@ -86,3 +86,4 @@ docs/superpowers/*/*.md
 CLAUDE.md
 AGENTS.md
 .playwright-mcp/
+.worktrees/

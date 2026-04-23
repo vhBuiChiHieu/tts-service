@@ -20,7 +20,7 @@ Các module chính:
 - `app/api/control.py`: API local-only cho tray/backend control (`/v1/control/status`, `/v1/control/shutdown`).
 - `app/db/`: SQLAlchemy session/model/repository cho bảng jobs.
 - `app/tts/`: token manager, Google adapter, chunker.
-- `app/audio/merger.py`: decode base64 MP3, áp `volume_gain_db`, export từng chunk MP3 tạm, merge toàn bộ chunk khi hoàn tất, áp speed hậu kỳ toàn file (`atempo`), rồi export file final.
+- `app/audio/merger.py`: decode base64 MP3, chuẩn hóa audio từng chunk về 44.1kHz/16-bit, áp `volume_gain_db`, giới hạn peak ở mức an toàn (`-1 dBFS`) để giảm clipping/rè, export chunk MP3 tạm chất lượng cao (`-q:a 2`), merge chunk bằng crossfade ngắn (25ms), áp speed hậu kỳ toàn file (`atempo`), rồi export file final.
 - `app/worker/`: worker loop và processor xử lý từng job; hiện đã có cooperative shutdown qua `stop_event`.
 - `app/runtime.py`: runtime handle cho worker thread (`thread`, `stop_event`, uptime/pid helper).
 - `run_backend.py`: entrypoint chạy backend theo kiểu programmatic uvicorn.
@@ -95,7 +95,7 @@ Tổng số test targeted đã verify trong lần cập nhật này: 25 pass.
 10. Tại các điểm an toàn (đầu chunk, sau chunk, trong lúc delay), worker kiểm tra cờ báo hủy. Nếu có, tiến trình dừng lập tức và lưu trạng thái `CANCELLED`.
 11. Khi retry `POST /v1/jobs/retry/{job_id}`, job `FAILED` hoặc `CANCELLED` được đưa lại về `QUEUED` trên chính `job_id`, giữ nguyên progress đã hoàn tất để worker resume từ chunk còn thiếu nếu các chunk tạm trước đó còn đủ.
 12. Nếu metadata progress còn nhưng thiếu chunk tạm, processor sẽ reset progress về 0 và synth lại từ đầu để tránh tạo file final bị thiếu đoạn đầu.
-13. Khi export final, Merger merge toàn bộ chunk tạm một lần, áp speed hậu kỳ trên toàn file bằng ffmpeg `atempo` theo `job.speed`; tên file là `outputs/{output_prefix}-{job_id}.mp3` nếu có prefix, ngược lại `outputs/{job_id}.mp3`.
+13. Khi export final, Merger merge toàn bộ chunk tạm một lần với crossfade ngắn (25ms), chuẩn hóa chunk về 44.1kHz/16-bit, giới hạn peak ở `-1 dBFS`, áp speed hậu kỳ trên toàn file bằng ffmpeg `atempo` theo `job.speed`, rồi export MP3 chất lượng cao (`-q:a 2`); tên file là `outputs/{output_prefix}-{job_id}.mp3` nếu có prefix, ngược lại `outputs/{job_id}.mp3`.
 14. Google adapter vẫn giữ fallback an toàn về `speed=1.0` và log raw response khi parse fail.
 15. Thành công: `SUCCEEDED` + thông tin file/duration`, đồng thời xóa thư mục chunk tạm.
 16. Thất bại: `FAILED` + `error_code`/`error_message`. Hoặc bị hủy: `CANCELLED`.
@@ -120,7 +120,7 @@ Giá trị mặc định hiện tại (chạy từ repo root):
 - `CHUNK_RETRY_MAX=2`
 - `RANDOM_DELAY_MIN_SEC=0.5`
 - `RANDOM_DELAY_MAX_SEC=1.5`
-- `SILENT_BETWEEN_CHUNKS_MS=180`
+- `SILENT_BETWEEN_CHUNKS_MS=20`
 - `TOKEN_TTL_SEC=3600`
 - `HOST=127.0.0.1`, `PORT=8000`
 
@@ -130,6 +130,7 @@ Giá trị mặc định hiện tại (chạy từ repo root):
 - Đã hỗ trợ per-job `speed` + `volume_gain_db`, có validate input ở API.
 - DB đã persist `speed` và `volume_gain_db` theo từng job.
 - Speed hiện được xử lý hậu kỳ ở bước export audio (ffmpeg `atempo`) để chủ động và ổn định hơn provider speed.
+- Audio pipeline đã được tối ưu để giảm rè/chuyển đoạn gãy: merge có crossfade 25ms, giảm `SILENT_BETWEEN_CHUNKS_MS` còn 20ms, chuẩn hóa audio chunk về 44.1kHz/16-bit, giới hạn peak `-1 dBFS`, và export MP3 chất lượng cao (`-q:a 2`).
 - Processor hiện gọi provider với `speed=1.0` để tránh lỗi response khi speed custom.
 - Google adapter có fallback an toàn về `speed=1.0` nếu parse lỗi, đồng thời có log raw response để debug.
 - Đã fix parser token cho trường hợp Google không trả key `SNlM0e`.
@@ -146,3 +147,7 @@ Giá trị mặc định hiện tại (chạy từ repo root):
 - Metadata request hiện nhận vào nhưng chưa persist vào DB.
 - Chưa có auth/rate-limit/cleanup chính sách cho output files.
 - Worker chạy in-process (thread), chưa tách thành service riêng.
+
+## Phiên bản
+- v1.0.2 - Tối ưu audio pipeline giảm artifact (crossfade/peak limit/sample-rate/quality) (2026/04/23)
+- v1.0.1 - Bắt đầu đánh dấu phiên bản (2026/04/22)

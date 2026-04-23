@@ -17,7 +17,7 @@ class Settings(BaseSettings):
     chunk_retry_max: int = 2
     random_delay_min_sec: float = 0.5
     random_delay_max_sec: float = 1.5
-    silent_between_chunks_ms: int = 180
+    silent_between_chunks_ms: int = 20
     token_ttl_sec: int = 3600
     host: str = "127.0.0.1"
     port: int = 8000
