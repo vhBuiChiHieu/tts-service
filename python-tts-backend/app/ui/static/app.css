@@ -361,7 +361,145 @@ button:disabled {
 .progress-fill.progress-state-failed { background: linear-gradient(90deg, #f87171 0%, #dc2626 100%); }
 .progress-fill.progress-state-cancelled { background: linear-gradient(90deg, #94a3b8 0%, #64748b 100%); }
 
+.jobs-status-summary {
+  position: sticky;
+  top: 18px;
+  z-index: 2;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.status-summary-card {
+  display: grid;
+  gap: 6px;
+  padding: 14px 16px;
+  border-radius: 20px;
+  border: 1px solid rgba(219, 228, 240, 0.95);
+  background: rgba(255, 255, 255, 0.92);
+  box-shadow: 0 12px 30px rgba(15, 23, 42, 0.06);
+}
+
+.status-summary-card strong {
+  font-size: 24px;
+  line-height: 1;
+}
+
+.status-summary-card span:last-child {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
 .jobs-list {
+  display: grid;
+  gap: 18px;
+}
+
+.queue-group {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid rgba(219, 228, 240, 0.9);
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.6);
+}
+
+.queue-group-running {
+  background: linear-gradient(180deg, rgba(220, 252, 231, 0.7) 0%, rgba(255, 255, 255, 0.92) 100%);
+  border-color: rgba(34, 197, 94, 0.22);
+}
+
+.queue-group-header,
+.queue-group-title,
+.queue-group-actions {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+}
+
+.queue-group-title {
+  justify-content: flex-start;
+}
+
+.queue-group-actions {
+  justify-content: flex-end;
+}
+
+.queue-group-count,
+.queue-group-hint {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.queue-group-toggle {
+  min-width: auto;
+  padding: 10px 14px;
+}
+
+.queue-group-toggle-icon {
+  font-size: 14px;
+  line-height: 1;
+}
+
+.queue-group-list {
+  display: grid;
+  gap: 14px;
+}
+
+.queue-group.is-collapsed {
+  gap: 0;
+}
+
+.queue-group.is-collapsed .queue-group-header {
+  margin-bottom: 0;
+}
+
+.queue-group.is-collapsed .queue-group-hint {
+  display: none;
+}
+
+.queue-group.is-collapsed .queue-group-list {
+  display: none;
+}
+
+.status-summary-running {
+  border-color: rgba(34, 197, 94, 0.18);
+}
+
+.status-summary-failed {
+  border-color: rgba(220, 38, 38, 0.18);
+}
+
+.status-summary-succeeded {
+  border-color: rgba(37, 99, 235, 0.16);
+}
+
+.status-summary-queued {
+  border-color: rgba(245, 158, 11, 0.18);
+}
+
+.status-summary-cancelled {
+  border-color: rgba(148, 163, 184, 0.3);
+}
+
+@media (max-width: 1040px) {
+  .jobs-status-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    top: 12px;
+  }
+}
+
+@media (max-width: 640px) {
+  .jobs-status-summary {
+    grid-template-columns: 1fr;
+  }
+}
+
+.queue-group-list {
   display: grid;
   gap: 14px;
 }
@@ -370,14 +508,71 @@ button:disabled {
   background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
 }
 
+.job-card.is-running {
+  border-color: rgba(21, 128, 61, 0.24);
+  box-shadow: 0 12px 26px rgba(21, 128, 61, 0.08);
+}
+
 .job-card.is-selected {
   border-color: rgba(37, 99, 235, 0.42);
   box-shadow: 0 10px 24px rgba(37, 99, 235, 0.10);
 }
 
+.job-progress-row {
+  display: grid;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.job-progress-row strong {
+  display: block;
+  font-size: 12px;
+  color: var(--muted);
+  margin-bottom: 4px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.job-progress-row span {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text);
+}
+
+.job-inline-progress {
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: #e2e8f0;
+}
+
+.job-inline-progress-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #f59e0b 0%, #fbbf24 100%);
+}
+
+.job-inline-progress-fill.status-running {
+  background: linear-gradient(90deg, #22c55e 0%, #16a34a 100%);
+}
+
+.job-inline-progress-fill.status-succeeded {
+  background: linear-gradient(90deg, #3b82f6 0%, #2563eb 100%);
+}
+
+.job-inline-progress-fill.status-failed {
+  background: linear-gradient(90deg, #f87171 0%, #dc2626 100%);
+}
+
+.job-inline-progress-fill.status-cancelled {
+  background: linear-gradient(90deg, #94a3b8 0%, #64748b 100%);
+}
+
 .job-meta {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 12px;
   margin-top: 14px;
 }

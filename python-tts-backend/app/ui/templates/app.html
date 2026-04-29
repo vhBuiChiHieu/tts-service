@@ -73,7 +73,7 @@
             <div class="panel-header jobs-header">
               <div>
                 <h2>Danh sách job</h2>
-                <p>Lọc, phân trang và chọn job để mở chi tiết ở panel bên phải.</p>
+                <p>Các job được nhóm theo trạng thái để dễ nhìn queue hiện tại, với RUNNING luôn nổi bật hơn để theo dõi realtime.</p>
               </div>
               <div class="toolbar">
                 <label class="field compact-field">
@@ -103,6 +103,7 @@
               <div id="jobs-summary" class="helper">Đang tải danh sách job...</div>
               <div id="pagination-summary" class="helper">Trang -/-</div>
             </div>
+            <div id="jobs-status-summary" class="jobs-status-summary hidden"></div>
             <div id="jobs-empty" class="empty-state hidden">Chưa có job nào phù hợp bộ lọc hiện tại.</div>
             <div id="jobs-list" class="jobs-list"></div>
 

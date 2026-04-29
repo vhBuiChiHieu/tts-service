@@ -28,12 +28,63 @@ const openOutputLink = document.getElementById('open-output-link');
 const jobsList = document.getElementById('jobs-list');
 const jobsSummary = document.getElementById('jobs-summary');
 const jobsEmpty = document.getElementById('jobs-empty');
+const jobsStatusSummary = document.getElementById('jobs-status-summary');
 
 let pollTimer = null;
 let selectedJobId = null;
 let currentPage = 1;
 let totalPages = 1;
 let currentPageSize = Number(pageSizeSelect.value);
+const defaultCollapsedGroups = ['SUCCEEDED', 'CANCELLED'];
+const collapsedGroups = new Set(defaultCollapsedGroups);
+const storageKey = 'local-tts-app-jobs-ui';
+const allowedStatuses = ['ALL', 'QUEUED', 'RUNNING', 'SUCCEEDED', 'FAILED', 'CANCELLED'];
+const allowedPageSizes = new Set(['10', '20', '50']);
+
+function readStoredUiState() {
+  try {
+    const raw = window.localStorage.getItem(storageKey);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === 'object' ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredUiState() {
+  try {
+    window.localStorage.setItem(storageKey, JSON.stringify({
+      statusFilter: statusFilter.value,
+      pageSize: String(currentPageSize),
+      collapsedGroups: Array.from(collapsedGroups),
+    }));
+  } catch {
+    // Ignore localStorage failures on unsupported environments.
+  }
+}
+
+function restoreUiState() {
+  const stored = readStoredUiState();
+  if (!stored) return;
+
+  if (allowedStatuses.includes(stored.statusFilter)) {
+    statusFilter.value = stored.statusFilter;
+  }
+
+  if (allowedPageSizes.has(String(stored.pageSize))) {
+    pageSizeSelect.value = String(stored.pageSize);
+    currentPageSize = Number(stored.pageSize);
+  }
+
+  collapsedGroups.clear();
+  const storedGroups = Array.isArray(stored.collapsedGroups) ? stored.collapsedGroups : defaultCollapsedGroups;
+  storedGroups
+    .filter((status) => allowedStatuses.includes(status) && status !== 'ALL')
+    .forEach((status) => collapsedGroups.add(status));
+}
+
+restoreUiState();
 
 function stopPolling() {
   if (pollTimer !== null) {
@@ -205,6 +256,158 @@ function statusClassName(status) {
   return `status-${normalized}`;
 }
 
+function statusLabel(status) {
+  if (status === 'RUNNING') return 'Đang chạy';
+  if (status === 'QUEUED') return 'Đang chờ';
+  if (status === 'FAILED') return 'Cần xử lý';
+  if (status === 'SUCCEEDED') return 'Hoàn tất';
+  if (status === 'CANCELLED') return 'Đã hủy';
+  return status || 'Khác';
+}
+
+function groupOrder(status) {
+  if (status === 'RUNNING') return 0;
+  if (status === 'QUEUED') return 1;
+  if (status === 'FAILED') return 2;
+  if (status === 'CANCELLED') return 3;
+  if (status === 'SUCCEEDED') return 4;
+  return 5;
+}
+
+function groupJobs(items) {
+  const groups = new Map();
+
+  items.forEach((job) => {
+    const key = job.status || 'QUEUED';
+    if (!groups.has(key)) {
+      groups.set(key, []);
+    }
+    groups.get(key).push(job);
+  });
+
+  return Array.from(groups.entries())
+    .sort(([left], [right]) => groupOrder(left) - groupOrder(right))
+    .map(([status, jobs]) => ({
+      status,
+      label: statusLabel(status),
+      jobs,
+      collapsed: collapsedGroups.has(status),
+    }));
+}
+
+function jobCounts(items) {
+  return ['RUNNING', 'QUEUED', 'FAILED', 'SUCCEEDED', 'CANCELLED'].map((status) => ({
+    status,
+    label: statusLabel(status),
+    count: items.filter((job) => job.status === status).length,
+  }));
+}
+
+function renderJobsStatusSummary(items) {
+  jobsStatusSummary.innerHTML = jobCounts(items)
+    .map(({ status, label, count }) => `
+      <article class="status-summary-card status-summary-${status.toLowerCase()}">
+        <span class="badge ${statusClassName(status)}">${status}</span>
+        <strong>${count}</strong>
+        <span>${label}</span>
+      </article>
+    `)
+    .join('');
+}
+
+function toggleGroup(status) {
+  if (collapsedGroups.has(status)) {
+    collapsedGroups.delete(status);
+    writeStoredUiState();
+    return;
+  }
+  collapsedGroups.add(status);
+  writeStoredUiState();
+}
+
+function ensureExpandedForSelectedJob(items) {
+  if (!selectedJobId) return;
+  const selectedJob = items.find((job) => job.job_id === selectedJobId);
+  if (!selectedJob) return;
+  collapsedGroups.delete(selectedJob.status || 'QUEUED');
+}
+
+function groupToggleLabel(group) {
+  return group.collapsed ? 'Mở nhóm' : 'Thu gọn';
+}
+
+function groupToggleIcon(group) {
+  return group.collapsed ? '▸' : '▾';
+}
+
+function shouldShowGroupList(group) {
+  return !group.collapsed;
+}
+
+function shouldShowRunningHint(group) {
+  return group.status === 'RUNNING' && !group.collapsed;
+}
+
+function shouldShowGroupCount(group) {
+  return `${group.jobs.length} job`;
+}
+
+function shouldShowSummary(items) {
+  return items.length > 0;
+}
+
+function updateSummaryVisibility(items) {
+  jobsStatusSummary.classList.toggle('hidden', !shouldShowSummary(items));
+}
+
+function escapeAttribute(value) {
+  return String(value).replace(/"/g, '&quot;');
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+function groupToggleButton(group) {
+  const expanded = !group.collapsed;
+  return `
+    <button
+      class="secondary-btn queue-group-toggle"
+      type="button"
+      data-action="toggle-group"
+      data-group-status="${escapeAttribute(group.status)}"
+      aria-expanded="${String(expanded)}"
+      aria-label="${escapeAttribute(groupToggleLabel(group))} ${escapeAttribute(group.label)}"
+    >
+      <span class="queue-group-toggle-icon">${groupToggleIcon(group)}</span>
+      <span>${groupToggleLabel(group)}</span>
+    </button>
+  `;
+}
+
+function groupListMarkup(group) {
+  if (!shouldShowGroupList(group)) {
+    return '';
+  }
+  return `<div class="queue-group-list">${group.jobs.map(jobCard).join('')}</div>`;
+}
+
+function runningHintMarkup(group) {
+  if (!shouldShowRunningHint(group)) {
+    return '';
+  }
+  return '<span class="queue-group-hint">Được ưu tiên hiển thị để theo dõi realtime.</span>';
+}
+
+function groupCountMarkup(group) {
+  return `<span class="queue-group-count">${shouldShowGroupCount(group)}</span>`;
+}
+
 function jobCard(job) {
   const openFile = job.result?.file_path
     ? `<a class="link-btn" href="${fileUrlFromPath(job.result.file_path)}" target="_blank" rel="noopener">Mở file</a>`
@@ -215,9 +418,10 @@ function jobCard(job) {
   const cancelButton = isCancellable(job.status)
     ? `<button class="cancel-btn" type="button" data-action="cancel" data-job-id="${job.job_id}">Hủy job</button>`
     : '';
+  const progress = Math.max(0, Math.min(100, job.progress?.progress_pct ?? 0));
 
   return `
-    <article class="job-card ${job.job_id === selectedJobId ? 'is-selected' : ''}" data-job-id="${job.job_id}">
+    <article class="job-card ${job.job_id === selectedJobId ? 'is-selected' : ''} ${job.status === 'RUNNING' ? 'is-running' : ''}" data-job-id="${job.job_id}">
       <div class="job-head">
         <div>
           <strong>${job.result?.file_name || job.job_id}</strong>
@@ -225,11 +429,16 @@ function jobCard(job) {
         </div>
         <span class="badge ${statusClassName(job.status)}">${job.status}</span>
       </div>
-      <div class="job-meta">
+      <div class="job-progress-row">
         <div>
-          <strong>Progress</strong>
-          <span>${job.progress?.progress_pct ?? 0}%</span>
+          <strong>Tiến độ</strong>
+          <span>${progress}%</span>
         </div>
+        <div class="job-inline-progress" aria-hidden="true">
+          <div class="job-inline-progress-fill ${statusClassName(job.status)}" style="width: ${progress}%"></div>
+        </div>
+      </div>
+      <div class="job-meta">
         <div>
           <strong>Chunks</strong>
           <span>${job.progress?.processed_chunks ?? 0}/${job.progress?.total_chunks ?? 0}</span>
@@ -253,6 +462,25 @@ function jobCard(job) {
   `;
 }
 
+function jobGroupSection(group) {
+  return `
+    <section class="queue-group queue-group-${group.status.toLowerCase()} ${group.collapsed ? 'is-collapsed' : ''}">
+      <div class="queue-group-header">
+        <div class="queue-group-title">
+          <span class="badge ${statusClassName(group.status)}">${group.status}</span>
+          <strong>${group.label}</strong>
+          ${runningHintMarkup(group)}
+        </div>
+        <div class="queue-group-actions">
+          ${groupCountMarkup(group)}
+          ${groupToggleButton(group)}
+        </div>
+      </div>
+      ${groupListMarkup(group)}
+    </section>
+  `;
+}
+
 async function loadJobs(resetPage = false) {
   if (resetPage) {
     currentPage = 1;
@@ -262,9 +490,14 @@ async function loadJobs(resetPage = false) {
   const filter = statusFilter.value;
   const items = filter === 'ALL' ? payload.items : payload.items.filter((job) => job.status === filter);
 
-  jobsSummary.textContent = `Hiển thị ${items.length} job trong trang hiện tại.`;
+  updateSummaryVisibility(items);
+  renderJobsStatusSummary(items);
+  ensureExpandedForSelectedJob(items);
+
+  const groups = groupJobs(items);
+  jobsSummary.textContent = `Hiển thị ${items.length} job trong ${groups.length} nhóm ở trang hiện tại.`;
   jobsEmpty.classList.toggle('hidden', items.length > 0);
-  jobsList.innerHTML = items.map(jobCard).join('');
+  jobsList.innerHTML = groups.map(jobGroupSection).join('');
   updatePaginationControls(payload.page, payload.pages, payload.total);
   highlightSelectedJob();
 }
@@ -346,6 +579,7 @@ refreshJobsButton.addEventListener('click', () => {
 });
 
 statusFilter.addEventListener('change', () => {
+  writeStoredUiState();
   loadJobs(true).catch((error) => {
     jobsSummary.textContent = error.message;
   });
@@ -353,6 +587,7 @@ statusFilter.addEventListener('change', () => {
 
 pageSizeSelect.addEventListener('change', () => {
   currentPageSize = Number(pageSizeSelect.value);
+  writeStoredUiState();
   loadJobs(true).catch((error) => {
     jobsSummary.textContent = error.message;
   });
@@ -385,6 +620,17 @@ jobsList.addEventListener('click', async (event) => {
   if (!target) return;
 
   const action = target.dataset.action;
+
+  if (action === 'toggle-group') {
+    const status = target.dataset.groupStatus;
+    if (!status) return;
+    toggleGroup(status);
+    loadJobs(false).catch((error) => {
+      jobsSummary.textContent = error.message;
+    });
+    return;
+  }
+
   const jobId = target.dataset.jobId;
   if (!jobId) return;
 
